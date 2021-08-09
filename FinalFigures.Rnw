@@ -1,0 +1,2415 @@
+\documentclass[8pt]{extreport}
+\usepackage[left=2cm, right=2cm, top=2cm, bottom=2cm]{geometry}
+\title{GUT VIRAL GENOME \& GENE CATALOGUE}
+\author{Lore Van Espen\\
+\\
+Laboratory of Viral Metagenomics\\
+Division of Clinical \& Epidemiological Virology\\
+Department of Microbiology, Immunology \& Transplantation\\
+Rega Institute for Medical Research\\
+KU Leuven, Belgium}
+
+\begin{document}
+
+\tableofcontents
+
+\part{GENERAL}
+
+\chapter{SETTINGS}
+
+<<>>=
+options(width=60)
+options(scipen=999)
+@
+
+\chapter{PACKAGES}
+
+<<>>=
+library(reshape2)
+library(plyr)
+library(ggplot2)
+library(viridis)
+library(VennDiagram)
+library(ggpubr)
+library(cowplot)
+library(genoPlotR)
+library(pdftools)
+library(magick)
+library(ggnewscale)
+library(ggforce)
+library(ggtree)
+library(phangorn)
+library(ggtext)
+library(vegan)
+library(phyloseq)
+@
+
+\chapter{FUNCTIONS}
+
+\section{Themes}
+
+<<>>=
+theme_plot <- function() {
+  theme_minimal(base_size = 12) %+replace%
+    theme(axis.line = element_line(color = "black"),
+        axis.ticks = element_blank(),
+        axis.title = element_text(size = 10, face = "bold"),
+        axis.text = element_text(size = 8),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(color = "grey50", size = 0.2),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(size = 15, face = "bold"),
+        plot.subtitle = element_text(size = 10))
+}
+@
+
+\chapter{COLORS}
+
+\section{Colors}
+
+<<>>=
+blue <- viridis(1, begin = 0.3, end = 0.3)
+bluegreen <- viridis(1, begin = 0.55, end = 0.55)
+green <- viridis(1, begin = 0.8, end = 0.8)
+yellow <- plasma(1, begin = 0.9, end = 0.9)
+orange <- plasma(1, begin = 0.7, end = 0.7)
+red <- plasma(1, begin = 0.6, end = 0.6)
+pink <- plasma(1, begin = 0.5, end = 0.5)
+purple <- plasma(1, begin = 0.3, end = 0.3)
+grey <- "grey"
+darkgrey <- "grey50"
+@
+
+\section{Palletes}
+
+<<>>=
+warm3 <- c(yellow, orange, pink)
+cold3 <- c(blue, bluegreen, green)
+warm4 <- c(yellow, orange, pink, purple)
+cold4 <- c(blue, bluegreen, green, yellow)
+colors3 <- c(blue, green, orange)
+colors4 <- c(blue, green, orange, pink)
+colors5 <- c(blue, green, yellow, orange, pink)
+colors6 <- c(blue, green, yellow, orange, pink, purple)
+colors7 <- c(blue, bluegreen, green, yellow, orange, pink, purple)
+@
+
+\chapter{LOOPS}
+
+\section{Viral subsets}
+
+<<>>=
+ViralSubset <- c("Viral", "Phage", "EukViral")
+ViralSubset_expl <- c("All viral genomes", "All phage genomes", "All eukaryotic viral genomes")
+ViralSubset_grepl <- c("Prokaryotic|Eukaryotic", "Prokaryotic", "Eukaryotic")
+names(ViralSubset_grepl) <- ViralSubset
+names(ViralSubset_expl) <- ViralSubset
+
+CompleteSubset <- c("All", "Half")
+CompleteSubset_grepl <- c("Complete|High-quality|Medium-quality|Low-quality|Not-determined", "Complete|High-quality|Medium-quality")
+names(CompleteSubset_grepl) <- CompleteSubset
+@
+
+\section{Levels}
+
+<<>>=
+AllLevels <- c("Classification", "Phylum", "Class", "Order", "Family", "Genus", "Species", "vConTACT", "Cluster")
+GeneLevels <- c("Gene", "Protein", "Name", "Function")
+@
+
+\section{Sample subsets}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Samples")
+Metadata <- read.csv("Metadata.csv", stringsAsFactors = FALSE)
+All <- Metadata$Sample
+Healthy <- Metadata$Sample[Metadata$Group == "GALA-HP" | Metadata$Group == "TARGET-N"]
+Minors <- Metadata$Sample[Metadata$Study == "TARGET"]
+Adults <- Metadata$Sample[Metadata$Study == "GALAXY"]
+SampleSubset <- list(All, Healthy, Minors, Adults)
+names(SampleSubset) <- c("All", "Healthy", "Minor", "Adult")
+@
+
+\chapter{DATA}
+
+\section{Abundance}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Abundance")
+input <- "ViralAbundance"
+for (form in c("", "AbsPres", "PhageRel")){
+  df <- gsub("_$", "", paste0(input, "_", form))
+  df <- read.csv(paste0("CATALOGUE.1000_scaffolds_95-80_", df, ".csv"), stringsAsFactors = FALSE)
+  colnames(df) <- gsub("\\.", "-", colnames(df))
+  assign(gsub("_$", "", paste0(input, "_", form)), df)
+}
+@
+
+\section{Annotation}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Annotation")
+Annotation <- read.csv("CATALOGUE.1000_scaffolds_95-80_FinalAnnotation.csv", stringsAsFactors = FALSE)
+setwd("~/OneDrive/Documenten/PhD/Catalogue/GeneCatalogue_Viral/")
+ViralGenes <- read.csv("CATALOGUE.1000_viral_scaffolds_95-80.genes_annotation.csv", stringsAsFactors = FALSE)
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Host")
+Host <- read.csv("CRISPR2hits_1mismatch.csv")
+@
+
+\section{Metadata}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Samples/")
+Metadata <- read.csv("Metadata.csv", stringsAsFactors = FALSE)
+@
+
+\section{Mastertables}
+
+\subsection{Genomes}
+
+<<>>=
+input <- "ViralAbundance"
+for (form in c("", "AbsPres", "PhageRel")){
+  df <- gsub("_$", "", gsub("__", "_", paste0(input, "_", form)))
+  temp <- merge(get(df), Annotation[, c("Cluster", paste0("Final_", AllLevels[-c(8,9)]), "vConTACT")], by = "Cluster", all.x = TRUE)
+  colnames(temp) <- gsub("Final_", "", colnames(temp))
+  assign(gsub("_$", "", paste0(df, "_A")), temp)
+}
+@
+
+\subsection{Genes}
+
+<<>>=
+ViralGenes_ViralAbundance_AbsPres <- merge(ViralGenes, ViralAbundance_AbsPres[,c("Cluster", colnames(ViralAbundance_AbsPres)[colnames(ViralAbundance_AbsPres) %in% SampleSubset[["All"]]])],
+                                           by.x = "Genome", by.y = "Cluster", all.x = TRUE)
+ViralGenes_ViralAbundance_AbsPres <- ViralGenes_ViralAbundance_AbsPres[!is.na(rowSums(ViralGenes_ViralAbundance_AbsPres[,colnames(ViralGenes_ViralAbundance_AbsPres)[colnames(ViralGenes_ViralAbundance_AbsPres) %in% SampleSubset[["All"]]]])),]
+ViralProtein_ViralAbundance_AbsPres <- aggregate(ViralGenes_ViralAbundance_AbsPres[,colnames(ViralGenes_ViralAbundance_AbsPres)[colnames(ViralGenes_ViralAbundance_AbsPres) %in% SampleSubset[["All"]]]],
+                                                  by = list(ViralGenes_ViralAbundance_AbsPres[,"OrthologousCluster"]), FUN = max)
+colnames(ViralProtein_ViralAbundance_AbsPres) <- c("OrthologousCluster", colnames(ViralProtein_ViralAbundance_AbsPres[,-1]))
+@
+
+\section{Lists of viruses}
+
+<<>>=
+Phages <- Annotation$Cluster[Annotation$Final_Classification == "Prokaryotic viruses"]
+EukViruses <- Annotation$Cluster[Annotation$Final_Classification == "Eukaryotic viruses"]
+Viruses <- Annotation$Cluste[Annotation$Final_Classification %in% c("Prokaryotic viruses", "Eukaryotic viruses")]
+HalfViruses <- Annotation$Cluster[Annotation$Quality %in% c("Complete", "High-quality", "Medium-quality") &
+                                    Annotation$Final_Classification %in% c("Prokaryotic viruses", "Eukaryotic viruses")]
+
+HealthyViruses <- ViralAbundance$Cluster[rowSums(ViralAbundance[,colnames(ViralAbundance)[colnames(ViralAbundance) %in% Healthy]]) > 0]
+
+MinorsViruses <- ViralAbundance$Cluster[rowSums(ViralAbundance[,colnames(ViralAbundance)[colnames(ViralAbundance) %in% Minors]]) > 0]
+AdultsViruses <- ViralAbundance$Cluster[rowSums(ViralAbundance[,colnames(ViralAbundance)[colnames(ViralAbundance) %in% Adults]]) > 0]
+LysogenicPhages <- unique(ViralGenes$Genome[!is.na(ViralGenes$Lysogeny)])
+@
+
+\section{Assigned colours}
+
+<<>>=
+ViralFamiliesColors <- data.frame(Colors = c(viridis(11, 1, begin = 0.3, end = 0.9), plasma(12, 1, begin = 0.9, end = 0.3), grey),
+                                   Family = c(sort(unique(Annotation$Final_Family[grepl("viruses", Annotation$Final_Classification) &
+                                                                                      !grepl("Unclassified", Annotation$Final_Family)])),
+                                                     "Unclassified"))
+EukViralFamiliesColors <- data.frame(Colors = c(viridis(8, 1, begin = 0.3, end = 1), plasma(8, 1, begin = 0.9, end = 0.3), grey),
+                                      Family = c("Alphaflexiviridae", "Betaflexiviridae", "Bromoviridae",
+                                                              "Partitiviridae", "Tombusviridae", "Tymoviridae", "Virgaviridae",
+                                                              "Chrysoviridae", "Totiviridae",
+                                                              "Anelloviridae", "Caliciviridae", "Circoviridae", "Genomoviridae",
+                                                              "Parvoviridae", "Picornaviridae", "Smacoviridae",
+                                                              "Picobirnaviridae"))
+PhageFamiliesColors <- data.frame(Colors = c(colors6, grey),
+                                   Family = c(as.character(sort(unique(Annotation$Final_Family[Annotation$Final_Classification == "Prokaryotic viruses" &
+                                                                                      !grepl("Unclassified", Annotation$Final_Family)]))),
+                                                     "Unclassified"))
+@
+
+\part{FIGURES}
+
+\chapter{FIGURE 1: DEVoC & Other DB}
+
+\section{PANEL A: DEVoC families with zoom}
+
+\subsection{Mastertable}
+
+<<>>=
+viralsubset <- "Viral"
+input <- "Cluster"
+level <- "Family"
+final_level <- paste0("Final_", level)
+Summary <- as.data.frame(count(Annotation[grepl(ViralSubset_grepl[[viralsubset]], Annotation$Final_Classification), c(final_level, "Final_Classification")]))
+colnames(Summary) <- c(level, "Classification", input)
+Summary$Classification[Summary$Classification == "Prokaryotic viruses"] <- "Phages"
+Summary$Classification <- factor(Summary$Classification, levels = c("Phages", "Eukaryotic viruses"))
+input_perc <- paste0(input, "_perc")
+Summary[[input_perc]] <- round(Summary[[input]]/sum(Summary[[input]])*100, digits = 2)
+Summary[[level]] <- as.character(Summary[[level]])
+Summary[[level]][Summary[[level]] == "Unclassified Prokaryotic viruses"] <- "Unclassified phages"
+Summary[[level]][Summary[[level]] %in% Annotation[[final_level]][Annotation$Final_Classification == "Eukaryotic viruses"]] <- "Eukaryotic viruses"
+Summary <- aggregate(Summary[,3:4], by = list(Summary[,1], Summary[,2]), FUN = sum)
+colnames(Summary) <- c(level, "Classification", colnames(Summary[-(1:2)]))
+Summary[[level]] <- factor(Summary[[level]], levels = unique(Summary[[level]]))
+Summary[[level]] <- relevel(Summary[[level]], "Eukaryotic viruses")
+Summary[[level]] <- factor(Summary[[level]], levels = rev(levels(Summary[[level]])))
+levels(Summary[[level]])
+Summary_agg <- aggregate(Summary[,3:4], by = list(Summary[,2]), FUN = sum)
+colnames(Summary_agg) <- c("Classification", input, input_perc)
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig1A <- ggplot(Summary) +
+  geom_bar(aes(0.25, get(input_perc), fill = Family), stat = "identity", width = 0.3) +
+  scale_fill_manual("Family", values = c(viridis(7, 1, begin = 0.2, end = 0.95), orange)) +
+  guides(fill = guide_legend(ncol = 1)) +
+  new_scale("fill") +
+  geom_bar( aes(0.05, get(input_perc), fill = Classification), stat = "identity", width = 0.1) +
+  scale_fill_manual("Classification", values = c(bluegreen, orange),
+                    labels = paste0(Summary_agg$Classification, " (n = ", format(Summary_agg[[input]], big.mark = ",", trim = TRUE), ")")) +
+  guides(fill = guide_legend(ncol = 1)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous("Percentage (%)", breaks = c(seq(0, 5, by = 1), seq(10, 100, by = 10)), expand = c(0,0)) +
+  theme_plot() +
+  theme(axis.title = element_blank(),
+        axis.text.x = element_blank(),
+        legend.title = element_text(size = 8),
+        legend.key.size = unit(10, "pt"),
+        legend.text = element_text(size = 7, face = "italic"),
+        plot.margin = unit(c(5.5, -12, 5.5, 25), "points"),
+        panel.grid.major = element_blank()) +
+  facet_zoom(ylim = c(0, 5))
+@
+
+\section{Stats}
+
+<<>>=
+nrow(Annotation[Annotation$Cluster %in% c(Phages, Viruses),])
+nrow(Annotation[Annotation$Cluster %in% Phages,])
+count(Annotation$Final_Family[Annotation$Cluster %in% Phages])
+count(Annotation[Annotation$Final_Genus != "Unclassified Prokaryotic viruses" & Annotation$Cluster %in% Phages,
+                 c("Final_Family", "Final_Genus", "vConTACT")])
+@
+
+\section{PANEL B: DEVoC host with zoom}
+
+\subsection{Import files}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Host/")
+CRISPR_All <- read.table("CRISPR_1mismatch.taxonomy.txt", sep = ",", col.names = c("Cluster", "Hit", "Classification", "Phylum", "Class", "Order", "Family", "Genus", "Species"), stringsAsFactors = FALSE)
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures")
+@
+
+\subsection{Function}
+
+<<>>=
+mode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+@
+
+\subsection{Mastertable}
+
+<<>>=
+CRISPR <- data.frame(Cluster = unique(CRISPR_All$Cluster))
+for (cluster in CRISPR$Cluster){
+  CRISPR$Hits[CRISPR$Cluster == cluster] <- nrow(CRISPR_All[CRISPR_All$Cluster == cluster,])
+  CRISPR$DifferentHits[CRISPR$Cluster == cluster] <- length(unique(CRISPR_All$Hit[CRISPR_All$Cluster == cluster]))
+  CRISPR$BacterialHits[CRISPR$Cluster == cluster] <- nrow(CRISPR_All[CRISPR_All$Cluster == cluster & CRISPR_All$Classification == "Bacteria",])
+  CRISPR$DifferentBacterialHits[CRISPR$Cluster == cluster] <- length(unique(CRISPR_All$Hit[CRISPR_All$Cluster == cluster & CRISPR_All$Classification == "Bacteria"]))
+  ## if more non-bacterial hits than bacterial hits --> check: often viruses/uncultured organism/environmental viruses (no classifications)/root (virus + bacteria)
+  CRISPR$Classification_Mode[CRISPR$Cluster == cluster] <- ifelse("Bacteria" %in% unique(CRISPR_All$Classification[CRISPR_All$Cluster == cluster]), "Bacteria", "Non-Bacteria")
+  CRISPR$Classification_LCA[CRISPR$Cluster == cluster] <- ifelse("Bacteria" %in% unique(CRISPR_All$Classification[CRISPR_All$Cluster == cluster]), "Bacteria", "Non-Bacteria")
+  for (i in 2:7){
+    level <- AllLevels[i]
+    level0 <- AllLevels[i-1]
+    level_mode <- paste0(level, "_Mode")
+    level0_mode <- paste0(level0, "_Mode")
+    level_LCA <- paste0(level, "_LCA")
+    level0_LCA <- paste0(level0, "_LCA")
+    CRISPR[CRISPR$Cluster == cluster, level_mode] <- ifelse(CRISPR$Classification_Mode[CRISPR$Cluster == cluster] == "Non-Bacteria", "Non-Bacteria",
+                                                            ifelse(mode(CRISPR_All[,level][CRISPR_All$Cluster == cluster &
+                                                                                      CRISPR_All$Classification == "Bacteria" &
+                                                                                            CRISPR_All[,level0] == CRISPR[,level0_mode][CRISPR$Cluster == cluster]]) != "",
+                                                                   mode(CRISPR_All[,level][CRISPR_All$Cluster == cluster &
+                                                                                      CRISPR_All$Classification == "Bacteria" &
+                                                                                            CRISPR_All[,level0] == CRISPR[,level0_mode][CRISPR$Cluster == cluster]]),
+                                                                   paste0("Unclassified ", CRISPR[CRISPR$Cluster == cluster,level0_mode])))
+
+    CRISPR[CRISPR$Cluster == cluster, level_LCA] <- ifelse(CRISPR$Classification_LCA[CRISPR$Cluster == cluster] == "Non-Bacteria", "Non-Bacteria",
+                                                           ifelse(length(unique(CRISPR_All[,level][CRISPR_All$Cluster == cluster & CRISPR_All$Classification == "Bacteria"])) == 1 &
+                                                                    unique(CRISPR_All[,level][CRISPR_All$Cluster == cluster & CRISPR_All$Classification == "Bacteria"]) != "",
+                                                                   unique(CRISPR_All[,level][CRISPR_All$Cluster == cluster & CRISPR_All$Classification == "Bacteria"]),
+                                                                   gsub("Unclassified Unclassified", "Unclassified", paste0("Unclassified ", CRISPR[CRISPR$Cluster == cluster,level0_LCA]))))
+  }
+}
+CRISPR2hits_1mismatch <- CRISPR[CRISPR$BacterialHits > 1,]
+CRISPR2hits_1mismatch <- merge(Annotation[Annotation$Final_Classification == "Prokaryotic viruses", c("Cluster", "Final_Family")],
+                               CRISPR2hits_1mismatch[, c("Cluster", colnames(CRISPR2hits_1mismatch)[grepl("LCA", colnames(CRISPR2hits_1mismatch))])],
+                               by = "Cluster", all = TRUE)
+
+
+input <- "Cluster"
+viralsubset <- "Phage"
+SummaryHost <- as.data.frame(count(CRISPR2hits_1mismatch[,c(paste0(AllLevels[1:7], "_LCA"))]))
+colnames(SummaryHost) <- c(gsub("_LCA", "", colnames(SummaryHost[,-ncol(SummaryHost)])), input)
+for (level in AllLevels[1:7]){
+  SummaryHost[[level]] <- as.character(SummaryHost[[level]])
+  SummaryHost[[level]][SummaryHost[[level]] == "Non-Bacteria" | is.na(SummaryHost[[level]])] <- "No host predicted"
+  SummaryHost[[level]][SummaryHost[[level]] == "Unclassified Bacteria" & SummaryHost$Species == "Unclassified Bacteria"] <- "No host predicted"
+  SummaryHost[[level]][SummaryHost[[level]] == "Unclassified Bacteria" & !grepl("Unclassified", SummaryHost$Species)] <- "Unclassified bacteria"
+  #SummaryHost[[level]][SummaryHost[[level]] %in% c("Chlorobi", "Chloroflexi", "Fusobacteria", "Spirochaetes", "Synergistetes", "Thermotogae")] <- "Other phyla"
+}
+SummaryHost <- aggregate(SummaryHost[,ncol(SummaryHost)], by = list(SummaryHost$Phylum), FUN = sum)
+colnames(SummaryHost) <- c("Phylum", input)
+SummaryHost$Phylum <- factor(SummaryHost$Phylum, levels = rev(SummaryHost$Phylum))
+SummaryHost$Phylum <- relevel(SummaryHost$Phylum, "Unclassified bacteria")
+SummaryHost$Phylum <- relevel(SummaryHost$Phylum, "No host predicted")
+input_perc <- paste0(input, "_perc")
+SummaryHost[[input_perc]] <- round(SummaryHost[[input]]/sum(SummaryHost[[input]])*100, digits = 2)
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig1B <- ggplot(SummaryHost) +
+  geom_bar(aes(0.25, get(input_perc), fill = Phylum), stat = "identity", width = 0.4) +
+  scale_fill_manual("Phylum", values = c(grey, rev(colors7))) +
+  guides(fill = guide_legend(ncol = 1)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous("Percentage (%)", breaks = c(seq(0, 10, by = 1), seq(10, 100, by = 10)), expand = c(0,0)) +
+  theme_plot() +
+  theme(axis.title = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.title = element_text(size = 8),
+        legend.key.size = unit(10, "pt"),
+        legend.text = element_text(size = 7, face = "italic"),
+        plot.margin = unit(c(5.5, 5.5, 5.5, 25), "points"),
+        panel.grid.major = element_blank()) +
+  facet_zoom(ylim = c(0, 10))
+@
+
+\section{PANEL C: Venn genomes}
+
+\subsection{Import files}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/OtherCatalogues/")
+OtherGenomeClusters_Size <- read.table("HGVGC_GVD_ViralRefSeq_IMGVR_HumanDigSys.1000_scaffolds_95-80_size.txt", col.names = "Size")
+OtherGenomeClusters_GVD <- read.table("HGVGC_GVD_ViralRefSeq_IMGVR_HumanDigSys.1000_scaffolds_95-80_GVDmembers.txt", col.names = "GVD")
+OtherGenomeClusters_IMGVR <- read.table("HGVGC_GVD_ViralRefSeq_IMGVR_HumanDigSys.1000_scaffolds_95-80_IMGVRmembers.txt", col.names = "IMGVR")
+OtherGenomeClusters_RefSeq <- read.table("HGVGC_GVD_ViralRefSeq_IMGVR_HumanDigSys.1000_scaffolds_95-80_RefSeqmembers.txt", col.names = "RefSeq")
+OtherGenomeClusters_HGVGC <- read.table("HGVGC_GVD_ViralRefSeq_IMGVR_HumanDigSys.1000_scaffolds_95-80_HGVGCmembers.txt", col.names = "HGVGC")
+OtherGenomeClusters_Members <- read.table("HGVGC_GVD_ViralRefSeq_IMGVR_HumanDigSys.1000_scaffolds_95-80_clusters.txt", sep = "\t", col.names = c("Cluster", paste0("Member", 1:48)), fill = TRUE)
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+@
+
+\subsection{Mastertable}
+
+<<>>=
+OtherGenomeClusters <- cbind(OtherGenomeClusters_Size,
+                             OtherGenomeClusters_GVD, OtherGenomeClusters_IMGVR, OtherGenomeClusters_RefSeq, OtherGenomeClusters_HGVGC)
+@
+
+\subsection{Function}
+
+<<>>=
+draw.quad.venn <- function (area1, area2, area3, area4, n12, n13, n14, n23, n24,
+    n34, n123, n124, n134, n234, n1234, category = rep("", 4),
+    lwd = rep(2, 4), lty = rep("solid", 4), col = rep("black",
+        4), fill = NULL, alpha = rep(0.5, 4), label.col = rep("black",
+        15), cex = rep(1, 15), fontface = rep("plain", 15), fontfamily = rep("serif",
+        15), cat.pos = c(-15, 15, 0, 0), cat.dist = c(0.22, 0.22,
+        0.11, 0.11), cat.col = rep("black", 4), cat.cex = rep(1,
+        4), cat.fontface = rep("plain", 4), cat.fontfamily = rep("serif",
+        4), cat.just = rep(list(c(0.5, 0.5)), 4), rotation.degree = 0,
+    rotation.centre = c(0.5, 0.5), ind = TRUE,
+### BEGIN WWK
+                            cex.prop=NULL,
+### END WWK
+                            ...)
+{
+    if (length(category) == 1) {
+        cat <- rep(category, 4)
+    }
+    else if (length(category) != 4) {
+        stop("Unexpected parameter length for 'category'")
+    }
+    if (length(lwd) == 1) {
+        lwd <- rep(lwd, 4)
+    }
+    else if (length(lwd) != 4) {
+        stop("Unexpected parameter length for 'lwd'")
+    }
+    if (length(lty) == 1) {
+        lty <- rep(lty, 4)
+    }
+    else if (length(lty) != 4) {
+        stop("Unexpected parameter length for 'lty'")
+    }
+    if (length(col) == 1) {
+        col <- rep(col, 4)
+    }
+    else if (length(col) != 4) {
+        stop("Unexpected parameter length for 'col'")
+    }
+    if (length(label.col) == 1) {
+        label.col <- rep(label.col, 15)
+    }
+    else if (length(label.col) != 15) {
+        stop("Unexpected parameter length for 'label.col'")
+    }
+    if (length(cex) == 1) {
+        cex <- rep(cex, 15)
+    }
+    else if (length(cex) != 15) {
+        stop("Unexpected parameter length for 'cex'")
+    }
+    if (length(fontface) == 1) {
+        fontface <- rep(fontface, 15)
+    }
+    else if (length(fontface) != 15) {
+        stop("Unexpected parameter length for 'fontface'")
+    }
+    if (length(fontfamily) == 1) {
+        fontfamily <- rep(fontfamily, 15)
+    }
+    else if (length(fontfamily) != 15) {
+        stop("Unexpected parameter length for 'fontfamily'")
+    }
+    if (length(fill) == 1) {
+        fill <- rep(fill, 4)
+    }
+    else if (length(fill) != 4 & length(fill) != 0) {
+        stop("Unexpected parameter length for 'fill'")
+    }
+    if (length(alpha) == 1) {
+        alpha <- rep(alpha, 4)
+    }
+    else if (length(alpha) != 4 & length(alpha) != 0) {
+        stop("Unexpected parameter length for 'alpha'")
+    }
+    if (length(cat.pos) == 1) {
+        cat.pos <- rep(cat.pos, 4)
+    }
+    else if (length(cat.pos) != 4) {
+        stop("Unexpected parameter length for 'cat.pos'")
+    }
+    if (length(cat.dist) == 1) {
+        cat.dist <- rep(cat.dist, 4)
+    }
+    else if (length(cat.dist) != 4) {
+        stop("Unexpected parameter length for 'cat.dist'")
+    }
+    if (length(cat.col) == 1) {
+        cat.col <- rep(cat.col, 4)
+    }
+    else if (length(cat.col) != 4) {
+        stop("Unexpected parameter length for 'cat.col'")
+    }
+    if (length(cat.cex) == 1) {
+        cat.cex <- rep(cat.cex, 4)
+    }
+    else if (length(cat.cex) != 4) {
+        stop("Unexpected parameter length for 'cat.cex'")
+    }
+    if (length(cat.fontface) == 1) {
+        cat.fontface <- rep(cat.fontface, 4)
+    }
+    else if (length(cat.fontface) != 4) {
+        stop("Unexpected parameter length for 'cat.fontface'")
+    }
+    if (length(cat.fontfamily) == 1) {
+        cat.fontfamily <- rep(cat.fontfamily, 4)
+    }
+    else if (length(cat.fontfamily) != 4) {
+        stop("Unexpected parameter length for 'cat.fontfamily'")
+    }
+    if (!(class(cat.just) == "list" & length(cat.just) == 4 &
+        length(cat.just[[1]]) == 2 & length(cat.just[[2]]) ==
+        2 & length(cat.just[[3]]) == 2 & length(cat.just[[4]]) ==
+        2)) {
+        stop("Unexpected parameter format for 'cat.just'")
+    }
+    cat.pos <- cat.pos + rotation.degree
+    a6 <- n1234
+    a12 <- n123 - a6
+    a11 <- n124 - a6
+    a5 <- n134 - a6
+    a7 <- n234 - a6
+    a15 <- n12 - a6 - a11 - a12
+    a4 <- n13 - a6 - a5 - a12
+    a10 <- n14 - a6 - a5 - a11
+    a13 <- n23 - a6 - a7 - a12
+    a8 <- n24 - a6 - a7 - a11
+    a2 <- n34 - a6 - a5 - a7
+    a9 <- area1 - a4 - a5 - a6 - a10 - a11 - a12 - a15
+    a14 <- area2 - a6 - a7 - a8 - a11 - a12 - a13 - a15
+    a1 <- area3 - a2 - a4 - a5 - a6 - a7 - a12 - a13
+    a3 <- area4 - a2 - a5 - a6 - a7 - a8 - a10 - a11
+    areas <- c(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11,
+        a12, a13, a14, a15)
+    areas.error <- c("a1  <- area3 - a2 - a4 - a5 - a6 - a7 - a12 - a13",
+        "a2  <- n34 - a6 - a5 - a7", "a3  <- area4 - a2 - a5 - a6 - a7 - a8 - a10 - a11",
+        "a4  <- n13 - a6 - a5 - a12", "a5  <- n134 - a6", "a6  <- n1234",
+        "a7  <- n234 - a6", "a8  <- n24 - a6 - a7 - a11", "a9  <- area1 - a4 - a5 - a6 - a10 - a11 - a12 - a15",
+        "a10 <- n14 - a6 - a5 - a11", "a11 <- n124 - a6", "a12 <- n123 - a6",
+        "a15 <- n12 - a6 - a11 - a12", "a13 <- n23 - a6 - a7 - a12",
+        "a14 <- area2 - a6 - a7 - a8 - a11 - a12 - a13 - a15")
+    for (i in 1:length(areas)) {
+        if (areas[i] < 0) {
+            stop(paste("Impossible:", areas.error[i], "produces negative area"))
+        }
+    }
+    grob.list <- gList()
+    ellipse.positions <- matrix(nrow = 4, ncol = 7)
+    colnames(ellipse.positions) <- c("x", "y", "a", "b", "rotation",
+        "fill.mapping", "line.mapping")
+    ellipse.positions[1, ] <- c(0.65, 0.47, 0.35, 0.2, 45, 2,
+        4)
+    ellipse.positions[2, ] <- c(0.35, 0.47, 0.35, 0.2, 135, 1,
+        1)
+    ellipse.positions[3, ] <- c(0.5, 0.57, 0.33, 0.15, 45, 4,
+        3)
+    ellipse.positions[4, ] <- c(0.5, 0.57, 0.35, 0.15, 135, 3,
+        2)
+    for (i in 1:4) {
+        grob.list <- gList(grob.list, VennDiagram::ellipse(x = ellipse.positions[i,
+            "x"], y = ellipse.positions[i, "y"], a = ellipse.positions[i,
+            "a"], b = ellipse.positions[i, "b"], rotation = ellipse.positions[i,
+            "rotation"], gp = gpar(lty = 0, fill = fill[ellipse.positions[i,
+            "fill.mapping"]], alpha = alpha[ellipse.positions[i,
+            "fill.mapping"]])))
+    }
+    for (i in 1:4) {
+        grob.list <- gList(grob.list, ellipse(x = ellipse.positions[i,
+            "x"], y = ellipse.positions[i, "y"], a = ellipse.positions[i,
+            "a"], b = ellipse.positions[i, "b"], rotation = ellipse.positions[i,
+            "rotation"], gp = gpar(lwd = lwd[ellipse.positions[i,
+            "line.mapping"]], lty = lty[ellipse.positions[i,
+            "line.mapping"]], col = col[ellipse.positions[i,
+            "line.mapping"]], fill = "transparent")))
+    }
+    label.matrix <- matrix(nrow = 15, ncol = 3)
+    colnames(label.matrix) <- c("label", "x", "y")
+    label.matrix[1, ] <- c(format(a1, big.mark = ","), 0.35, 0.77)
+    label.matrix[2, ] <- c(format(a2, big.mark = ","), 0.5, 0.69)
+    label.matrix[3, ] <- c(format(a3, big.mark = ","), 0.65, 0.77)
+    label.matrix[4, ] <- c(format(a4, big.mark = ","), 0.31, 0.67)
+    label.matrix[5, ] <- c(format(a5, big.mark = ","), 0.4, 0.58)
+    label.matrix[6, ] <- c(format(a6, big.mark = ","), 0.5, 0.47)
+    label.matrix[7, ] <- c(format(a7, big.mark = ","), 0.6, 0.58)
+    label.matrix[8, ] <- c(format(a8, big.mark = ","), 0.69, 0.67)
+    label.matrix[9, ] <- c(format(a9, big.mark = ","), 0.18, 0.58)
+    label.matrix[10, ] <- c(format(a10, big.mark = ","), 0.32, 0.42)
+    label.matrix[11, ] <- c(format(a11, big.mark = ","), 0.425, 0.38)
+    label.matrix[12, ] <- c(format(a12, big.mark = ","), 0.575, 0.38)
+    label.matrix[13, ] <- c(format(a13, big.mark = ","), 0.68, 0.42)
+    label.matrix[14, ] <- c(format(a14, big.mark = ","), 0.82, 0.58)
+    label.matrix[15, ] <- c(format(a15, big.mark = ","), 0.5, 0.28)
+
+### BEGIN WWK
+    if(length(cex.prop) == 1){
+        maxArea = max(areas)
+        if(cex.prop == "lin"){
+            for(i in 1:length(areas)){
+                cex[i] = cex[i] * areas[i] / maxArea
+            }
+        }
+        else if(cex.prop == "log10"){
+            for(i in 1:length(areas)){
+                if(areas[i] >= 0){
+                    cex[i] = cex[i] * log10(1+areas[i])*2.5  / log10(maxArea)
+                }
+                else{
+                    warning(paste("Error in log10 rescaling of areas: area ",i," is zero", sep=""))
+                }
+            }
+        }
+        else {
+            stop(paste("Unknown value passed to cex.prop:", cex.prop))
+        }
+    }
+### END WWK
+
+    for (i in 1:nrow(label.matrix)) {
+        grob.list <- gList(grob.list, textGrob(label = label.matrix[i,
+            "label"], x = label.matrix[i, "x"], y = label.matrix[i,
+            "y"], gp = gpar(col = label.col[i], cex = cex[i],
+            fontface = fontface[i], fontfamily = fontfamily[i])))
+    }
+    cat.pos.x <- c(0.18, 0.82, 0.35, 0.65)
+    cat.pos.y <- c(0.58, 0.58, 0.77, 0.77)
+    for (i in 1:4) {
+        this.cat.pos <- find.cat.pos(x = cat.pos.x[i], y = cat.pos.y[i],
+            pos = cat.pos[i], dist = cat.dist[i])
+        grob.list <- gList(grob.list, textGrob(label = category[i],
+            x = this.cat.pos$x, y = this.cat.pos$y, just = cat.just[[i]],
+            gp = gpar(col = cat.col[i], cex = cat.cex[i], fontface = cat.fontface[i],
+                fontfamily = cat.fontfamily[i])))
+    }
+    grob.list <- VennDiagram::adjust.venn(VennDiagram::rotate.venn.degrees(grob.list,
+        rotation.degree, rotation.centre[1], rotation.centre[2]),
+        ...)
+    if (ind) {
+        grid.draw(grob.list)
+    }
+    return(grob.list)
+}
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig1C <- draw.quad.venn(area1 = nrow(OtherGenomeClusters[OtherGenomeClusters$GVD > 0,]),
+                        area2 = nrow(OtherGenomeClusters[OtherGenomeClusters$IMGVR > 0,]),
+                        area3 = nrow(OtherGenomeClusters[OtherGenomeClusters$RefSeq > 0,]),
+                        area4 = nrow(OtherGenomeClusters[OtherGenomeClusters$HGVGC > 0,]),
+                        n12 = nrow(OtherGenomeClusters[OtherGenomeClusters$GVD > 0 & OtherGenomeClusters$IMGVR > 0,]),
+                        n13 = nrow(OtherGenomeClusters[OtherGenomeClusters$GVD > 0 & OtherGenomeClusters$RefSeq > 0,]),
+                        n14 = nrow(OtherGenomeClusters[OtherGenomeClusters$GVD > 0 & OtherGenomeClusters$HGVGC > 0,]),
+                        n23 = nrow(OtherGenomeClusters[OtherGenomeClusters$IMGVR > 0 & OtherGenomeClusters$RefSeq > 0,]),
+                        n24 = nrow(OtherGenomeClusters[OtherGenomeClusters$IMGVR > 0 & OtherGenomeClusters$HGVGC > 0,]),
+                        n34 = nrow(OtherGenomeClusters[OtherGenomeClusters$RefSeq > 0 & OtherGenomeClusters$HGVGC > 0,]),
+                        n123 = nrow(OtherGenomeClusters[OtherGenomeClusters$GVD > 0 & OtherGenomeClusters$IMGVR > 0 & OtherGenomeClusters$RefSeq > 0,]),
+                        n124 = nrow(OtherGenomeClusters[OtherGenomeClusters$GVD > 0 & OtherGenomeClusters$IMGVR > 0 & OtherGenomeClusters$HGVGC > 0,]),
+                        n134 = nrow(OtherGenomeClusters[OtherGenomeClusters$GVD > 0 & OtherGenomeClusters$RefSeq > 0 & OtherGenomeClusters$HGVGC > 0,]),
+                        n234 = nrow(OtherGenomeClusters[OtherGenomeClusters$IMGVR > 0 & OtherGenomeClusters$RefSeq > 0 & OtherGenomeClusters$HGVGC > 0,]),
+                        n1234 = nrow(OtherGenomeClusters[OtherGenomeClusters$GVD > 0 & OtherGenomeClusters$IMGVR > 0 & OtherGenomeClusters$RefSeq > 0 & OtherGenomeClusters$HGVGC > 0,]),
+                        category = c(paste0("GVD\nn = ", format(sum(OtherGenomeClusters$GVD), big.mark = ",")),
+                                     paste0("Human\nGI Tract\nIMG/VR2\nn = ", format(sum(OtherGenomeClusters$IMGVR), big.mark = ",")),
+                                     paste0("Viral RefSeq\nn = ", format(sum(OtherGenomeClusters$RefSeq), big.mark = ",")),
+                                     paste0("DEVoC\nn = ", format(sum(OtherGenomeClusters$HGVGC), big.mark = ","))),
+                        fill = colors4, col = c(blue, orange, pink, green), alpha = 0.5,
+                        cat.dist = c(0.23, 0.27, 0.13, 0.13), cat.fontfamily = "sans", cat.cex = 0.7,
+                        fontfamily = "sans",  cex = 0.7)
+@
+
+
+\section{FINAL FIGURE 1}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("Fig1.pdf", width = 10, height = 3)
+ggdraw() +
+  draw_plot(Fig1B, x = 0, y = 0, width = 0.35, height = 1) +
+  draw_plot(Fig1A, x = 0.35, y = 0, width = 0.35, height = 1) +
+  draw_plot(Fig1C, x = 0.7, y = 0, width = 0.3, height = 1) +
+  draw_plot_label(label = c("A", "B", "C"), x = c(0, 0.35, 0.7), y = c(1, 1, 1), size = 15)
+dev.off()
+@
+
+\chapter{FIGURE 2: Healthy gut phageome}
+
+\section{STATS}
+
+<<>>=
+summary(colSums(ViralAbundance[ViralAbundance$Cluster %in% Phages,
+                               colnames(ViralAbundance)[colnames(ViralAbundance) %in% SampleSubset[["Healthy"]]]])/colSums(ViralAbundance[, colnames(ViralAbundance)[colnames(ViralAbundance) %in% SampleSubset[["Healthy"]]]]))
+summary(colSums(ViralAbundance[ViralAbundance$Cluster %in% Phages & ViralAbundance$Cluster %in% HalfViruses,
+                               colnames(ViralAbundance)[colnames(ViralAbundance) %in% SampleSubset[["Healthy"]]]])/colSums(ViralAbundance[ViralAbundance$Cluster %in% Phages,
+                                                                                                                                          colnames(ViralAbundance)[colnames(ViralAbundance) %in% SampleSubset[["Healthy"]]]]))
+@
+
+\section{PANEL A: Prevalence PGs}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+viralsubset <- "Phage"
+samplesubset <- "Healthy"
+level <- "Cluster"
+completesubset <- "Half"
+df <- paste0(input, "_AbsPres_A")
+Prevalence <- get(df)[grepl(ViralSubset_grepl[[viralsubset]], get(df)$Classification) &
+                        get(df)$Cluster %in% Annotation$Cluster[grepl(CompleteSubset_grepl[[completesubset]], Annotation$Quality)],
+                      c(level, colnames(get(df))[colnames(get(df)) %in% SampleSubset[[samplesubset]]])]
+Prevalence$Prevalence <- rowSums(Prevalence[,-1])
+Prevalence[,2:(ncol(Prevalence)-1)] <- NULL
+Prevalence <- Prevalence[Prevalence$Prevalence > 0,]
+Prevalence$Prevalence[Prevalence$Prevalence > 20] <- 20
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig2A <- ggplot(Prevalence) +
+  geom_bar(aes(Prevalence), fill = "grey50") +
+  scale_y_continuous("Number of PGs", labels = scales::comma, limits = c(0,620), expand = c(0,0)) +
+  scale_x_continuous(expand = c(0,0), limits = c(0.4,20.6), breaks = c(5, 10, 15, 20), labels = paste0(c(rep("", 3), ">= "), c(5, 10, 15, 20))) +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+@
+
+\subsection{Stats}
+
+<<>>=
+summary(colSums(ViralAbundance_PhageRel[ViralAbundance_PhageRel$Cluster %in% Prevalence$Cluster[Prevalence$Prevalence == 1],
+                                colnames(ViralAbundance_PhageRel)[colnames(ViralAbundance_PhageRel) %in% SampleSubset[["Healthy"]]]]))
+summary(colSums(ViralAbundance_AbsPres[ViralAbundance_AbsPres$Cluster %in% Prevalence$Cluster[Prevalence$Prevalence == 1],
+                                colnames(ViralAbundance_AbsPres)[colnames(ViralAbundance_AbsPres) %in% SampleSubset[["Healthy"]]]])/
+          colSums(ViralAbundance_AbsPres[ViralAbundance_AbsPres$Cluster %in% Phages & ViralAbundance_AbsPres$Cluster %in% HalfViruses,
+                                colnames(ViralAbundance_AbsPres)[colnames(ViralAbundance_AbsPres) %in% SampleSubset[["Healthy"]]]]))
+@
+
+\section{PANEL B: Dominance PGs}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+form <- "PhageRel"
+viralsubset <- "Phage"
+samplesubset <- "Healthy"
+level <- "Cluster"
+completesubset <- "Half"
+df <- paste0(input, "_", form, "_A")
+Dominance_Sort <- get(df)[grepl(ViralSubset_grepl[[viralsubset]], get(df)$Classification) &
+                          get(df)$Cluster %in% Annotation$Cluster[grepl(CompleteSubset_grepl[[completesubset]], Annotation$Quality)],
+                          c(level, colnames(get(df))[colnames(get(df)) %in% SampleSubset[[samplesubset]]])]
+#Dominance_Sort[,-1] <- sweep(Dominance_Sort[,-1], 2, colSums(Dominance_Sort[,-1]), "/") ### sweep or no sweep
+Dominance_Sort <- aggregate(Dominance_Sort[,-1], by = list(Dominance_Sort[[level]]), FUN = sum)
+Dominance_Sort <- Dominance_Sort[,-1]
+for (sample in colnames(Dominance_Sort[,1:ncol(Dominance_Sort)])){
+  Dominance_Sort[1:nrow(Dominance_Sort),sample] <- sort(Dominance_Sort[,sample], decreasing = TRUE)
+}
+Dominance_Top <- data.frame(colnames(Dominance_Sort))
+colnames(Dominance_Top) <- "Sample"
+for (top in c(seq(1, 10, by = 1))){
+  colname <- paste0("Top", top)
+  Dominance_Top[[colname]] <- colSums(Dominance_Sort[1:top,])
+}
+Dominance_Top <- melt(Dominance_Top, id.var = c("Sample"), variable.name = "Top", value.name = "Rel")
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig2B <- ggplot() +
+  geom_boxplot(aes(Dominance_Top$Top, Dominance_Top$Rel), fill = "grey50", color = "black") +
+  scale_x_discrete(paste0("Top X most abundant PGs/sample")) +
+  scale_y_continuous("Phage relative abundance", breaks = seq(0, 1, by = 0.1), expand = c(0, 0), limits = c(0, 1)) +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+@
+
+\subsection{Stats}
+
+<<>>=
+summary(Dominance_Top$Rel[Dominance_Top$Top == "Top1"])
+summary(Dominance_Top$Rel[Dominance_Top$Top == "Top10"])
+@
+
+
+\section{PANEL C: Prevalence OGs}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+samplesubset <- "Healthy"
+level <- "Protein"
+level_cluster <- "OrthologousCluster"
+df <- paste0("Viral", level, "_", input, "_AbsPres")
+PrevalenceOG <- get(df)[,c(level_cluster, colnames(get(df))[colnames(get(df)) %in% SampleSubset[[samplesubset]]])]
+PrevalenceOG$Prevalence <- rowSums(PrevalenceOG[,-1])
+PrevalenceOG[,2:(ncol(PrevalenceOG)-1)] <- NULL
+PrevalenceOG <- PrevalenceOG[PrevalenceOG$Prevalence > 0,]
+PrevalenceOG$Prevalence[PrevalenceOG$Prevalence > 20] <- 20
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig2C <- ggplot(PrevalenceOG) +
+            geom_bar(aes(Prevalence), fill = "grey50") +
+            scale_x_continuous(expand = c(0,0), limits = c(0.4,20.6), breaks = c(5, 10, 15, 20), labels = paste0(c(rep("", 3), ">= "), c(5, 10, 15, 20))) +
+            scale_y_continuous("Number of OGs", labels = scales::comma, expand = c(0,0), limits = c(0, 22001)) +
+            theme_plot() +
+            theme(panel.grid.major.x = element_blank(),
+                  axis.text = element_text(size = 7))
+@
+
+\subsection{Stats}
+
+<<>>=
+summary(colSums(ViralProtein_ViralAbundance_AbsPres[ViralProtein_ViralAbundance_AbsPres$OrthologousCluster %in% PrevalenceOG$OrthologousCluster[PrevalenceOG$Prevalence == 1],
+                                colnames(ViralProtein_ViralAbundance_AbsPres)[colnames(ViralProtein_ViralAbundance_AbsPres) %in% SampleSubset[["Healthy"]]]])/
+          colSums(ViralProtein_ViralAbundance_AbsPres[,colnames(ViralProtein_ViralAbundance_AbsPres)[colnames(ViralProtein_ViralAbundance_AbsPres) %in% SampleSubset[["Healthy"]]]]))
+@
+
+\section{FINAL FIGURE 2}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("Fig2.pdf", width = 10, height = 3)
+ggdraw() +
+  draw_plot(Fig2A, x = 0, y = 0, width = 0.33, height = 0.95) +
+  draw_plot(Fig2B, x = 0.33, y = 0, width = 0.33, height = 0.95) +
+  draw_plot(Fig2C, x = 0.67, y = 0, width = 0.33, height = 0.95) +
+  draw_plot_label(label = c("A", "B", "C"), x = c(0, 0.33, 0.67), y = c(1, 1, 1), size = 15)
+dev.off()
+@
+
+\chapter{FIGURE 3: Heatlhy gut virome associated with age}
+
+\section{PANEL A: Jaccard-diversity PG}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+form <- "PhageRel"
+viralsubset <- "Phage"
+level <- "Cluster"
+completesubset <- "Half"
+df <- paste0(input, "_", form, "_A")
+temp <- get(df)[grepl(ViralSubset_grepl[[viralsubset]], get(df)$Classification) &
+                get(df)$Cluster %in% Annotation$Cluster[grepl(CompleteSubset_grepl[[completesubset]], Annotation$Quality)],
+            c(level, colnames(get(df))[colnames(get(df)) %in% SampleSubset[[samplesubset]]])]
+temp <- temp[,colSums(temp != 0, na.rm = TRUE) > 0]
+temp <- temp[rowSums(temp[,-1] != 0) > 0,]
+temp <- merge(temp, get(df)[, c("Cluster", "vConTACT", "Species", "Genus", "Family")], by = "Cluster", all.x = TRUE)
+OTU_matrix <- as.matrix(temp[,-c(1, (ncol(temp)-3):ncol(temp))])
+TAX_matrix <- as.matrix(temp[,c(1, (ncol(temp)-3):ncol(temp))])
+OTU <- otu_table(OTU_matrix, taxa_are_rows = TRUE)
+TAX <- tax_table(TAX_matrix)
+physeq_Metadata <- sample_data(as.data.frame(Metadata[Metadata$Sample %in% colnames(temp),-1], row.names = Metadata$Sample[Metadata$Sample %in% colnames(temp)]))
+Physeq <- phyloseq(OTU, TAX, sam_data = physeq_Metadata)
+ordination <- "PCoA"
+distance <- "jaccard"
+dist <- distance(Physeq, method = distance)
+ord <- ordinate(Physeq, ordination, dist)
+metadata <- as(sample_data(Physeq), "data.frame")
+Agetest <- adonis(dist ~ Group, data = metadata, permutations = 999)
+PhyseqPG <- Physeq
+AgetestPG <- Agetest
+ordPG <- ord
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig3A <- plot_ordination(PhyseqPG, ordPG, type = "samples", color = "Group") +
+  geom_point(alpha = 0.1) +
+  scale_color_manual("Age Group", values = c(blue, green), labels = c("Children & Adolescents", "Adults"), limits = c("TARGET-N", "GALA-HP")) +
+  scale_x_continuous(n.breaks = 6) +
+  scale_y_continuous(n.breaks = 7) +
+  theme_plot() +
+  theme(axis.line = element_blank(),
+        legend.direction = "horizontal",
+        legend.title = element_text(vjust = 0.75, size = 10),
+        legend.text = element_text(size = 7)) +
+  geom_text(aes(0.05, 0.27, label = paste0("R^2 = ", round(AgetestPG$aov.tab$R2[1], digits = 2), " (p = ", AgetestPG$aov.tab$`Pr(>F)`[1], ")")),
+            color = "black", size = 2.5)
+@
+
+\section{PANEL C: Proportional richness TPG}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+form <- "AbsPres"
+samplesubset <- "Healthy"
+viralsubset <- "Phage"
+level <- "Cluster"
+completesubset <- "Half"
+df <- paste0(input, "_", form)
+Lysogeny <- get(df)[get(df)$Cluster %in% Annotation$Cluster[grepl(CompleteSubset_grepl[[completesubset]], Annotation$Quality)]
+                    ,c(level, colnames(get(df))[colnames(get(df)) %in% SampleSubset[[samplesubset]]])]
+Lysogeny <- Lysogeny[rowSums(Lysogeny[,-1] != 0) > 0,]
+Lysogeny[,-1] <- sweep(Lysogeny[,-1], 2, colSums(Lysogeny[,-1]), "/")
+Lysogeny$Lysogeny <- ifelse(Lysogeny$Cluster %in% LysogenicPhages, "Temperate", "No lysogenic genes detected")
+Lysogeny <- aggregate(Lysogeny[,-c(1, ncol(Lysogeny))], by = list(Lysogeny$Lysogeny), FUN = sum)
+Lysogeny <- as.data.frame(t(Lysogeny[,-1]))
+colnames(Lysogeny) <- c("No lysogenic genes detected", "Temperate")
+Lysogeny$Sample <- rownames(Lysogeny)
+rownames(Lysogeny) <- NULL
+Lysogeny <- merge(Lysogeny, Metadata[, c("Sample", "Group")], by = "Sample")
+Lysogeny$Group <- ifelse(Lysogeny$Group == "TARGET-N", "Children &\nAdolescents", "Adults")
+Lysogeny$Group <- factor(Lysogeny$Group, levels = c("Children &\nAdolescents", "Adults"))
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig3C <- ggplot(Lysogeny, aes(Group, Temperate)) +
+  geom_boxplot(aes(color = Group, fill = Group), alpha = 0.5) +
+  stat_compare_means(aes(Group, Temperate), method = "wilcox.test", label = "p.format", vjust = 3, size = 2.5) +
+  scale_fill_manual(values = c(blue, green), guide = FALSE) +
+  scale_color_manual(values = c(blue, green), guide = FALSE) +
+  scale_x_discrete("") +
+  scale_y_continuous("Proportional richness", limits = c(0,1), expand = c(0,0)) +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+@
+
+\subsection{Stats}
+
+<<>>=
+summary(Lysogeny$Temperate)
+@
+
+\section{PANEL BD: Absolute richness & Shannon TPGs}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+samplesubset <- "Healthy"
+viralsubset <- "Phage"
+level <- "Cluster"
+completesubset <- "Half"
+df <- paste0(input, "_A")
+temp <- get(df)[grepl(ViralSubset_grepl[[viralsubset]], get(df)$Classification) &
+                  get(df)$Cluster %in% LysogenicPhages & ## temperate only
+                  get(df)$Cluster %in% Annotation$Cluster[grepl(CompleteSubset_grepl[[completesubset]], Annotation$Quality)],
+                  colnames(get(df))[colnames(get(df)) %in% c(SampleSubset[[samplesubset]], level)]]
+temp[is.na(temp)] <- 0
+Alpha <- data.frame(Sample = colnames(temp[,-1]),
+                     Observed = specnumber(t(temp[,-1])),
+                     Shannon = vegan::diversity(t(temp[,-1]), index = "shannon"))
+Alpha <- merge(Alpha, Metadata[,c("Sample", "Group")], by.y = "Sample")
+Alpha$Group <- ifelse(Alpha$Group == "TARGET-N", "Children &\nAdolescents", "Adults")
+Alpha$Group <- factor(Alpha$Group, levels = c("Children &\nAdolescents", "Adults"))
+Alpha <- melt(Alpha, id.vars = c("Sample", "Group"), value.name = "Richness", variable.name = "Type")
+@
+
+\subsection{PANEL B: Figure absolute richness TGPs}
+
+<<>>=
+Fig3B <- ggplot(Alpha[Alpha$Type == "Observed",], aes(Group, Richness)) +
+  geom_boxplot(aes(color = Group, fill = Group), alpha = 0.5) +
+  stat_compare_means(aes(Group, Richness), method = "wilcox.test", label = "p.format", vjust = 3, size = 2.5) +
+  scale_fill_manual(values = c(blue, green), guide = FALSE) +
+  scale_color_manual(values = c(blue, green), guide = FALSE) +
+  scale_y_continuous("Observed richness", limits = c(0, 28), expand = c(0,0)) +
+  scale_x_discrete("") +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+@
+
+\subsection{PANEL D: Figure Shannon diversity TPGs}
+
+<<>>=
+Fig3D <- ggplot(Alpha[Alpha$Type == "Shannon",], aes(Group, Richness)) +
+  geom_boxplot(aes(color = Group, fill = Group), alpha = 0.5) +
+  stat_compare_means(aes(Group, Richness), method = "wilcox.test", label = "p.format", vjust = 3, size = 2.5) +
+  scale_fill_manual(values = c(blue, green), guide = FALSE) +
+  scale_color_manual(values = c(blue, green), guide = FALSE) +
+  scale_y_continuous("Shannon diversity", limits = c(0, 3), expand = c(0,0)) +
+  scale_x_discrete("") +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+@
+
+\subsection{Stats}
+
+<<>>=
+summary(Alpha$Richness[Alpha$Type == "Observed"])
+@
+
+\section{PANEL E: Jaccard-diversity OG}
+
+\subsection{Mastertable}
+
+<<>>=
+samplesubset <- "Healthy"
+input <- "ViralAbundance"
+subset <- "Viral"
+level <- "Protein"
+level_cluster <- "OrthologousCluster"
+df <- paste0(subset, level, "_", input, "_AbsPres")
+temp <- get(df)[,c(level_cluster, colnames(get(df))[colnames(get(df)) %in% SampleSubset[[samplesubset]]])]
+temp <- temp[,colSums(temp != 0) > 0]
+temp <- temp[rowSums(temp[,2:ncol(temp)] != 0) > 0,]
+OTU_matrix <- as.matrix(temp[,-1])
+rownames(OTU_matrix) <- temp[,1]
+OTU <- otu_table(OTU_matrix, taxa_are_rows = TRUE)
+metadata <- as.data.frame(Metadata[Metadata$Sample %in% colnames(temp),-1], row.names = Metadata$Sample[Metadata$Sample %in% colnames(temp)])
+physeq_Metadata <- sample_data(metadata)
+Physeq <- phyloseq(OTU, sam_data = physeq_Metadata)
+ordination <- "PCoA"
+distance <- "jaccard"
+dist <- distance(Physeq, method = distance)
+ord <- ordinate(Physeq, ordination, dist)
+metadata <- as(sample_data(Physeq), "data.frame")
+Agetest <- adonis(dist ~ Group, data = metadata, permutations = 999)
+PhyseqOG <- Physeq
+AgetestOG <- Agetest
+ordOG <- ord
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig3E <- plot_ordination(PhyseqOG, ordOG, type = "samples", color = "Group") +
+  geom_point(alpha = 0.1) +
+  scale_color_manual(values = c(green, blue), guide = FALSE) +
+  scale_x_continuous(n.breaks = 7) +
+  scale_y_continuous(n.breaks = 6) +
+  theme_plot() +
+  theme(axis.line = element_blank()) +
+  geom_text(aes(-0.15, 0.24, label = paste0("R^2 = ", round(Agetest$aov.tab$R2[1], digits = 2), " (p = ", Agetest$aov.tab$`Pr(>F)`[1], ")")),
+            color = "black", size = 2.5)
+@
+
+\section{FINAL FIGURE 3}
+
+<<>>=
+Legend3 <- as_ggplot(get_legend(Fig3A))
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("Fig3.pdf", width = 7, height = 7)
+ggdraw() +
+  draw_plot(Fig3A + theme(legend.position = "none"), width = 0.45, height = 0.42, x = 0, y = 0.47) +
+  draw_plot(Fig3B, width = 0.45, height = 0.3, x = 0.5, y = 0.6) +
+  draw_plot(Fig3C, width = 0.45, height = 0.3, x = 0.5, y = 0.3) +
+  draw_plot(Fig3D, width = 0.45, height = 0.3, x = 0.5, y = 0) +
+  draw_plot(Fig3E, width = 0.45, height = 0.42, x = 0, y = 0) +
+  draw_plot(Legend3, width = 0.8, height = 0.45, x = -0.15, y = 0.73) +
+  draw_text("Temperate PGs", x = 0.75, y = 0.95, size = 10, fontface = "bold") +
+  draw_plot_label(label = c("A", "B", "C", "D", "E"), x = c(0, 0.5, 0.5, 0.5, 0), y = c(0.95, 0.95, 0.66, 0.33, 0.45), size = 15)
+dev.off()
+@
+
+\chapter{FIGURE 4: Other studies}
+
+\section{PANEL A: Heatmap SRA}
+
+\subsection{Import files}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/SRA")
+SRA_AbsPres <- read.csv("SRA_AbsPres.csv", stringsAsFactors = FALSE)
+colnames(SRA_AbsPres) <- gsub("\\.", "-", colnames(SRA_AbsPres))
+Overview_samples <- read.csv("Overview_samples.csv")
+@
+
+\subsection{Masterlists}
+
+<<>>=
+SRA_All <- as.character(Overview_samples$Sample)
+SRA_Healthy <- as.character(Overview_samples$Sample[Overview_samples$Health == "Healthy"])
+
+SRA_Sick <- as.character(Overview_samples$Sample[Overview_samples$Health != "Healthy" & Overview_samples$Health != "Unknown"])
+SRA_IBD <- as.character(Overview_samples$Sample[Overview_samples$Health %in% c("IBD", "UC", "CD")])
+SRA_HIV <- as.character(Overview_samples$Sample[Overview_samples$Health %in% c("HIV", "HIV + ART")])
+SRA_MN <- as.character(Overview_samples$Sample[Overview_samples$Health %in% c("Kwashiorkor", "Marasmus", "Marasmus + Kwashiorkor")])
+SRA_T1D <- as.character(Overview_samples$Sample[Overview_samples$Health %in% c("PreT1D", "T1D", "Islet autoimmunity, PreT1D", "T1D autoantibody seroconversion")])
+SRA_CDI <- as.character(Overview_samples$Sample[Overview_samples$Health == "CDI"])
+SRA_Adenoma <- as.character(Overview_samples$Sample[Overview_samples$Health == "Adenoma"])
+SRA_Cancer <- as.character(Overview_samples$Sample[Overview_samples$Health == "Carcinoma"])
+SRA_HSCT <- as.character(Overview_samples$Sample[Overview_samples$Health == "HSCT"])
+#SRA_Diarrhea <- as.character(Overview_samples$Sample[Overview_samples$Health == "Diarrhoea"]) # not known which pools have diarrhea
+
+SRA_EU <- as.character(Overview_samples$Sample[Overview_samples$Country %in% c("Belgium", "Estonia", "Finland", "France", "Ireland", "Spain", "Switzerland", "UK")])
+SRA_AM <- as.character(Overview_samples$Sample[grepl("USA|Canada", Overview_samples$Country)])
+SRA_AF <- as.character(Overview_samples$Sample[Overview_samples$Country %in% c("Cameroon", "Ethiopia", "Malawi", "Uganda")])
+SRA_AS <- as.character(Overview_samples$Sample[Overview_samples$Country %in% c("HongKong", "Beijing_China", "Zhejiang_China")])
+
+SRA_F <- as.character(Overview_samples$Sample[Overview_samples$Gender == "Female"])
+SRA_M <- as.character(Overview_samples$Sample[Overview_samples$Gender == "Male"])
+
+SRA_Infant <- as.character(Overview_samples$Sample[Overview_samples$AgeGroup == "Infant"])
+SRA_Child <- as.character(Overview_samples$Sample[Overview_samples$AgeGroup == "Child"])
+SRA_Teenager <- as.character(Overview_samples$Sample[Overview_samples$AgeGroup == "Teenager"])
+SRA_ChildTeenager <- as.character(Overview_samples$Sample[Overview_samples$AgeGroup %in% c("Child/Teenager", "Child", "Teenager")])
+SRA_Adult <- as.character(Overview_samples$Sample[Overview_samples$AgeGroup == "Adult"])
+SRA_Elderly <- as.character(Overview_samples$Sample[Overview_samples$AgeGroup == "Elderly"])
+
+### combined ###
+
+SRA_Healthy_EU <- SRA_Healthy[SRA_Healthy %in% SRA_EU]
+SRA_Healthy_AM <- SRA_Healthy[SRA_Healthy %in% SRA_AM]
+SRA_Healthy_AF <- SRA_Healthy[SRA_Healthy %in% SRA_AF]
+SRA_Healthy_AS <- SRA_Healthy[SRA_Healthy %in% SRA_AS]
+
+SRA_Healthy_Infant <- SRA_Healthy[SRA_Healthy %in% SRA_Infant]
+SRA_Healthy_Child <- SRA_Healthy[SRA_Healthy %in% SRA_Child]
+SRA_Healthy_Teenager <- SRA_Healthy[SRA_Healthy %in% SRA_Teenager]
+SRA_Healthy_ChildTeenager <- SRA_Healthy[SRA_Healthy %in% SRA_ChildTeenager]
+SRA_Healthy_Adult <- SRA_Healthy[SRA_Healthy %in% SRA_Adult]
+SRA_Healthy_Elderly <- SRA_Healthy[SRA_Healthy %in% SRA_Elderly]
+
+SRA_samplelists <- list(SRA_All, SRA_Healthy, SRA_Healthy_EU, SRA_Healthy_AM, SRA_Healthy_AF, SRA_Healthy_AS,
+                        SRA_Healthy_Infant, SRA_Healthy_ChildTeenager, SRA_Healthy_Adult, SRA_Healthy_Elderly,
+                        SRA_Sick, SRA_HSCT, SRA_Cancer, SRA_CDI, SRA_Adenoma, SRA_T1D, SRA_HIV, SRA_IBD, SRA_MN) # disease sorted from high to low maximum
+names(SRA_samplelists) <- c("SRA_All", "SRA_Healthy", "SRA_Healthy_EU", "SRA_Healthy_AM", "SRA_Healthy_AF", "SRA_Healthy_AS",
+                              "SRA_Healthy_Infant", "SRA_Healthy_ChildTeenager", "SRA_Healthy_Adult", "SRA_Healthy_Elderly",
+                              "SRA_Sick", "SRA_HSCT", "SRA_Cancer", "SRA_CDI", "SRA_Adenoma", "SRA_T1D", "SRA_HIV", "SRA_IBD", "SRA_MN") # disease sorted from high to low maximum
+@
+
+\subsection{Mastertable}
+
+<<>>=
+SRA_AbsPres_Top <- NULL
+SRA_AbsPres_Top <- as.data.frame(as.character(Top$Cluster))
+colnames(SRA_AbsPres_Top) <- "Cluster"
+SRA_AbsPres_Top$Length <- as.numeric(gsub(".*_length_", "", gsub("_cov_.*", "", SRA_AbsPres_Top$Cluster)))
+for (cluster in SRA_AbsPres_Top$Cluster){
+  SRA_AbsPres_Top[SRA_AbsPres_Top$Cluster == cluster, "DEVoC_Healthy"] <- sum(ViralAbundance_AbsPres[ViralAbundance_AbsPres$Cluster == cluster,
+                                                                                                   colnames(ViralAbundance_AbsPres)[colnames(ViralAbundance_AbsPres) %in% Healthy],])/length(colnames(ViralAbundance_AbsPres)[colnames(ViralAbundance_AbsPres) %in% Healthy])*100
+  SRA_AbsPres_Top[SRA_AbsPres_Top$Cluster == cluster, "DEVoC_Healthy_ChildTeenager"] <- sum(ViralAbundance_AbsPres[ViralAbundance_AbsPres$Cluster == cluster,
+                                                                                                   colnames(ViralAbundance_AbsPres)[colnames(ViralAbundance_AbsPres) %in% Healthy & colnames(ViralAbundance_AbsPres) %in% Minors],])/length(colnames(ViralAbundance_AbsPres)[colnames(ViralAbundance_AbsPres) %in% Healthy & colnames(ViralAbundance_AbsPres) %in% Minors])*100
+    SRA_AbsPres_Top[SRA_AbsPres_Top$Cluster == cluster, "DEVoC_Healthy_Adults"] <- sum(ViralAbundance_AbsPres[ViralAbundance_AbsPres$Cluster == cluster,
+                                                                                                   colnames(ViralAbundance_AbsPres)[colnames(ViralAbundance_AbsPres) %in% Healthy & colnames(ViralAbundance_AbsPres) %in% Adults],])/length(colnames(ViralAbundance_AbsPres)[colnames(ViralAbundance_AbsPres) %in% Healthy & colnames(ViralAbundance_AbsPres) %in% Adults])*100
+}
+for (cluster in SRA_AbsPres_Top$Cluster){
+  for (samples in names(SRA_samplelists)){
+    SRA_AbsPres_Top[SRA_AbsPres_Top$Cluster == cluster, samples] <- sum(SRA_AbsPres[SRA_AbsPres$Cluster == cluster,
+                                                                                      colnames(SRA_AbsPres)[colnames(SRA_AbsPres) %in% SRA_samplelists[[samples]]],])/length(SRA_samplelists[[samples]])*100
+  }
+}
+SRA_AbsPres_Top <- SRA_AbsPres_Top[order(SRA_AbsPres_Top$DEVoC_Healthy),]
+SRA_AbsPres_Top_Figure <- melt(SRA_AbsPres_Top[,-2], id.vars = "Cluster", variable.name = "Subset", value.name = "Prevalence")
+SRA_AbsPres_Top_Figure$Prevalence[SRA_AbsPres_Top_Figure$Prevalence == 0] <- NA
+SRA_AbsPres_Top_Figure$Cluster <- factor(SRA_AbsPres_Top_Figure$Cluster, levels = rev(Top39))
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig4A <- ggplot() +
+  geom_tile(aes(SRA_AbsPres_Top_Figure$Subset, SRA_AbsPres_Top_Figure$Cluster, fill = SRA_AbsPres_Top_Figure$Prevalence),
+            width = 0.9) +
+  scale_fill_gradientn(colours = c(colors7, plasma(1, begin = 0.1, end = 0.1)), limits = c(0.0, 70), breaks = seq(0, 100, by = 10), na.value = "white") +
+  scale_x_discrete("", position = "top",
+                   labels = gsub("ChildTeenager", "Children\n& Adolesc.",
+                                 gsub("&", " &\n",
+                                      gsub("_", "\n",
+                                           gsub("AM", "America",
+                                                gsub("EU", "Europe",
+                                                     gsub("AS", "Asia",
+                                                          gsub("AF", "Africa",
+                                                               gsub("MN", "Malnutrition", levels(SRA_AbsPres_Top_Figure$Subset)))))))))) +
+  scale_y_discrete("", labels = rev(names(Top39)), expand = c(0,2.5)) +
+  guides(fill = guide_colorbar(title = "Prevalence (%)")) +
+  theme_plot() +
+  theme(legend.direction = "horizontal",
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8),
+        axis.text.x = element_text(size = 7, angle = 0, hjust = 0.5, vjust = 0),
+        axis.text.y = element_text(size = 7),
+        axis.ticks = element_blank(),
+        axis.line = element_blank(),
+        plot.title = element_text(hjust = 0),
+        plot.subtitle = element_text(hjust = 0),
+        panel.grid.major = element_blank()) +
+  ggtitle(" ", subtitle = " ")
+
+x <- 1:(length(SRA_samplelists)+3)
+lengths <- c(length(Healthy[Healthy %in% colnames(ViralAbundance_AbsPres)]),
+             length(Healthy[Healthy %in% colnames(ViralAbundance_AbsPres) & Healthy %in% Minors]),
+             length(Healthy[Healthy %in% colnames(ViralAbundance_AbsPres) & Healthy %in% Adults]))
+studies <- rep(1, 3)
+for (k in 1:(length(SRA_samplelists))){
+  lengths[[k+3]] <- length(SRA_samplelists[[k]])
+  studies[[k+3]] <- length(unique(Overview_samples$Study[Overview_samples$Sample %in% SRA_samplelists[[k]]]))
+}
+Fig4A <- Fig4A + geom_text(aes(x = x, y = 41, label = paste0("n = ", lengths)), size = 2) +
+  geom_text(aes(x = x, y = 40, label = paste0("s = ", studies)), size = 2)
+@
+
+\section{PANEL B: Boxplot Geography}
+
+\subsection{Mastertable}
+
+<<>>=
+SRA_Geography <- melt(SRA_AbsPres_Top[,c("Cluster", "SRA_Healthy_EU", "SRA_Healthy_AM", "SRA_Healthy_AF", "SRA_Healthy_AS")],
+                      id.vars = "Cluster", variable.name = "Geography", value.name = "Prevalence")
+SRA_Geography$Cluster <- factor(SRA_Geography$Cluster, levels = Top39)
+Lengths_Geography <- c()
+Studies_Geography <- c()
+for (label in unique(SRA_Geography$Geography)){
+  Lengths_Geography[[label]] <- length(SRA_samplelists[[label]])
+  Studies_Geography[[label]] <- length(unique(Overview_samples$Study[Overview_samples$Sample %in% SRA_samplelists[[label]]]))
+}
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig4B <- ggplot(SRA_Geography, aes(reorder(Geography, -Prevalence, FUN = median), Prevalence)) +
+  geom_boxplot(fill = grey, outlier.shape = NA) +
+  geom_point(aes(color = Cluster, fill = Cluster, shape = Cluster), alpha = 0.5, size = 1.5, position = position_dodge(width = 0.4)) +
+  geom_line(aes(color = Cluster, group = Cluster), alpha = 0.5, position = position_dodge(width = 0.4)) +
+  scale_x_discrete("Geography", labels = paste0(c("Europe", "America", "Africa", "Asia"),
+                                                "\nn = ", Lengths_Geography,
+                                                "\ns = ", Studies_Geography, "\n\n")) +
+  scale_y_continuous("Prevalence (%)", expand = c(0.01, 0.01), limits = c(0, 65)) +
+  scale_fill_manual("", values = rep(c(viridis(5, begin = 0.2, end = 1), plasma(5, begin = 0.9, end = 0.1),
+                                   paste0("grey", seq(0, 80, by = 40))), each = 3), labels = names(Top39)) +
+  scale_color_manual("", values = rep(c(viridis(5, begin = 0.2, end = 1), plasma(5, begin = 0.9, end = 0.1),
+                                    paste0("grey", seq(0, 80, by = 40))), each = 3), labels = names(Top39)) +
+  scale_shape_manual("", values = rep(c(21:23), times = 13), labels = names(Top39)) +
+  guides(fill = guide_legend(ncol = 13)) +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+@
+
+\subsection{Stats}
+
+<<>>=
+SRA_AbsPres_Top_Figure$Prevalence[is.na(SRA_AbsPres_Top_Figure$Prevalence)] <- 0
+wilcox.test(SRA_AbsPres_Top_Figure$Prevalence[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_Healthy")],
+             SRA_AbsPres_Top_Figure$Prevalence[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_Sick")], paired = TRUE)
+kruskal.test(SRA_AbsPres_Top_Figure$Prevalence[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_HIV",
+                                                                                    "SRA_MN",
+                                                                                    "SRA_IBD",
+                                                                                    "SRA_CDI",
+                                                                                    "SRA_Cancer",
+                                                                                    "SRA_Adenoma",
+                                                                                    "SRA_T1D",
+                                                                                    "SRA_HSCT")],
+             SRA_AbsPres_Top_Figure$Subset[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_HIV",
+                                                                                    "SRA_MN",
+                                                                                    "SRA_IBD",
+                                                                                    "SRA_CDI",
+                                                                                    "SRA_Cancer",
+                                                                                    "SRA_Adenoma",
+                                                                                    "SRA_T1D",
+                                                                                    "SRA_HSCT")])
+pairwise.wilcox.test(SRA_AbsPres_Top_Figure$Prevalence[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_HIV",
+                                                                                    "SRA_MN",
+                                                                                    "SRA_IBD",
+                                                                                    "SRA_CDI",
+                                                                                    "SRA_Cancer",
+                                                                                    "SRA_Adenoma",
+                                                                                    "SRA_T1D",
+                                                                                    "SRA_HSCT")],
+             SRA_AbsPres_Top_Figure$Subset[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_HIV",
+                                                                                    "SRA_MN",
+                                                                                    "SRA_IBD",
+                                                                                    "SRA_CDI",
+                                                                                    "SRA_Cancer",
+                                                                                    "SRA_Adenoma",
+                                                                                    "SRA_T1D",
+                                                                                    "SRA_HSCT")],
+             method = "holm", paired = TRUE)
+
+kruskal.test(SRA_AbsPres_Top_Figure$Prevalence[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_Healthy_EU",
+                                                                                    "SRA_Healthy_AM",
+                                                                                    "SRA_Healthy_AF",
+                                                                                    "SRA_Healthy_AS")],
+             SRA_AbsPres_Top_Figure$Subset[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_Healthy_EU",
+                                                                                    "SRA_Healthy_AM",
+                                                                                    "SRA_Healthy_AF",
+                                                                                    "SRA_Healthy_AS")])
+dunn.test(SRA_AbsPres_Top_Figure$Prevalence[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_Healthy_EU",
+                                                                                    "SRA_Healthy_AM",
+                                                                                    "SRA_Healthy_AF",
+                                                                                    "SRA_Healthy_AS")],
+             SRA_AbsPres_Top_Figure$Subset[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_Healthy_EU",
+                                                                                    "SRA_Healthy_AM",
+                                                                                    "SRA_Healthy_AF",
+                                                                                    "SRA_Healthy_AS")],
+          method = "bonferroni", kw = TRUE, label = TRUE, table = FALSE, list = TRUE)
+
+
+
+
+kruskal.test(SRA_AbsPres_Top_Figure$Prevalence[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_Healthy_Infant",
+                                                                                    "SRA_Healthy_ChildTeenager",
+                                                                                    "SRA_Healthy_Adult",
+                                                                                    "SRA_Healthy_Elderly")],
+             SRA_AbsPres_Top_Figure$Subset[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_Healthy_Infant",
+                                                                                    "SRA_Healthy_ChildTeenager",
+                                                                                    "SRA_Healthy_Adult",
+                                                                                    "SRA_Healthy_Elderly")])
+dunn.test(SRA_AbsPres_Top_Figure$Prevalence[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_Healthy_Infant",
+                                                                                    "SRA_Healthy_ChildTeenager",
+                                                                                    "SRA_Healthy_Adult",
+                                                                                    "SRA_Healthy_Elderly")],
+             SRA_AbsPres_Top_Figure$Subset[SRA_AbsPres_Top_Figure$Subset %in% c("SRA_Healthy_Infant",
+                                                                                    "SRA_Healthy_ChildTeenager",
+                                                                                    "SRA_Healthy_Adult",
+                                                                                    "SRA_Healthy_Elderly")],
+          method = "bonferroni", kw = TRUE, label = TRUE, table = FALSE, list = TRUE)
+@
+
+
+\section{PANEL C: Boxplot Age}
+
+\subsection{Mastertable}
+
+<<>>=
+SRA_Age <- melt(SRA_AbsPres_Top[,c("Cluster", "SRA_Healthy_Infant", "SRA_Healthy_ChildTeenager", "SRA_Healthy_Adult", "SRA_Healthy_Elderly")],
+                      id.vars = "Cluster", variable.name = "Age", value.name = "Prevalence")
+SRA_Age$Cluster <- factor(SRA_Age$Cluster, levels = Top39)
+Lengths_Age <- c()
+Studies_Age <- c()
+for (label in unique(SRA_Age$Age)){
+  Lengths_Age[[label]] <- length(SRA_samplelists[[label]])
+  Studies_Age[[label]] <- length(unique(Overview_samples$Study[Overview_samples$Sample %in% SRA_samplelists[[label]]]))
+}
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig4C <- ggplot(SRA_Age, aes(Age, Prevalence)) +
+  geom_boxplot(fill = grey, outlier.shape = NA) +
+  geom_point(aes(color = Cluster, fill = Cluster, shape = Cluster), alpha = 0.5, size = 1.5, position = position_dodge(width = 0.4)) +
+  geom_line(aes(color = Cluster, group = Cluster), alpha = 0.5, position = position_dodge(width = 0.4)) +
+  scale_x_discrete("Age", labels = paste0(c("Infants\n(0-2 y)\n", "Children &\nAdolesc.\n(3-17 y)", "Adults\n(18-64 y)\n", "Elderly\n(+65 y)\n"),
+                                          "\nn = ", Lengths_Age,
+                                          "\ns = ", Studies_Age)) +
+  scale_y_continuous("Prevalence (%)", expand = c(0.01, 0.01), limits = c(0, 65)) +
+  scale_fill_manual("", values = rep(c(viridis(5, begin = 0.2, end = 1), plasma(5, begin = 0.9, end = 0.1),
+                                   paste0("grey", seq(0, 80, by = 40))), each = 3), labels = names(Top39)) +
+  scale_color_manual("", values = rep(c(viridis(5, begin = 0.2, end = 1), plasma(5, begin = 0.9, end = 0.1),
+                                    paste0("grey", seq(0, 80, by = 40))), each = 3), labels = names(Top39)) +
+  scale_shape_manual("", values = rep(c(21:23), times = 13), labels = names(Top39)) +
+  guides(fill = guide_legend(ncol = 2)) +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+@
+
+\section{PANEL D: Boxplot Disease}
+
+\subsection{Mastertable}
+
+<<>>=
+SRA_Disease <- melt(SRA_AbsPres_Top[,c("Cluster", "SRA_HSCT", "SRA_Cancer", "SRA_CDI", "SRA_Adenoma", "SRA_T1D", "SRA_HIV", "SRA_IBD", "SRA_MN")],
+                      id.vars = "Cluster", variable.name = "Disease", value.name = "Prevalence")
+SRA_Disease$Cluster <- factor(SRA_Disease$Cluster, levels = Top39)
+Lengths_Disease <- c()
+Studies_Disease <- c()
+for (label in unique(SRA_Disease$Disease)){
+  Lengths_Disease[[label]] <- length(SRA_samplelists[[label]])
+  Studies_Disease[[label]] <- length(unique(Overview_samples$Study[Overview_samples$Sample %in% SRA_samplelists[[label]]]))
+}
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig4D <- ggplot(SRA_Disease, aes(Disease, Prevalence)) +
+  geom_boxplot(fill = grey, outlier.shape = NA) +
+  geom_point(aes(color = Cluster, fill = Cluster, shape = Cluster), alpha = 0.5, size = 1.5, position = position_dodge(width = 0.4)) +
+  geom_line(aes(color = Cluster, group = Cluster), alpha = 0.5, position = position_dodge(width = 0.4)) +
+  scale_x_discrete("Disease", labels = paste0(c("HSCT", "Cancer", "CDI", "Adenoma", "T1D", "HIV", "IBD", "MN"),
+                                              "\nn = ", Lengths_Disease,
+                                              "\ns = ", Studies_Disease, "\n\n")) +
+  scale_y_continuous("Prevalence (%)", expand = c(0.01, 0.01), limits = c(0, 65)) +
+  scale_fill_manual("", values = rep(c(viridis(5, begin = 0.2, end = 1), plasma(5, begin = 0.9, end = 0.1),
+                                   paste0("grey", seq(0, 80, by = 40))), each = 3), labels = names(Top39)) +
+  scale_color_manual("", values = rep(c(viridis(5, begin = 0.2, end = 1), plasma(5, begin = 0.9, end = 0.1),
+                                    paste0("grey", seq(0, 80, by = 40))), each = 3), labels = names(Top39)) +
+  scale_shape_manual("", values = rep(c(21:23), times = 13), labels = names(Top39)) +
+  guides(fill = guide_legend(ncol = 2)) +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+@
+
+\section{FINAL FIGURE 4}
+
+<<>>=
+Legend4A <- as_ggplot(get_legend(Fig4A))
+Legend4BCD <- as_ggplot(get_legend(Fig4B))
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("Fig4.pdf", width = 10, height = 10)
+ggdraw() +
+  draw_plot(Fig4A + theme(legend.position = "none"), width = 1, height = 0.7, x = 0, y = 0.32) +
+  draw_plot(Fig4B + theme(legend.position = "none"), width = 0.25, height = 0.25, x = 0, y = 0.07) +
+  draw_plot(Fig4C + theme(legend.position = "none"), width = 0.25, height = 0.25, x = 0.25, y = 0.07) +
+  draw_plot(Fig4D + theme(legend.position = "none"), width = 0.5, height = 0.25, x = 0.5, y = 0.07) +
+  draw_plot(Legend4A, width = 1, height = 0.7, x = 0.38, y = 0.62) +
+  draw_plot(Legend4BCD, width = 1, height = 0.1, x = 0, y = 0) +
+  draw_plot_label(c("A", "B", "C", "D"), x = c(0, 0, 0.25, 0.5), y = c(1, 0.33, 0.33, 0.33), size = 15)
+dev.off()
+@
+
+\chapter{FIGURE 5: Prevalent novel phage}
+
+\section{LEGEND}
+
+\subsection{Mastertable}
+
+<<>>=
+Functions_Legend <- data.frame(Functions = c("RPL, TXN, TLN, RCB & Repair",
+                                             "Lysogenic cycle",
+                                             "Packaging & Assembly",
+                                             "Structure",
+                                             "Attachment, Entry & Lysis",
+                                             "Other function",
+                                             "No function",
+                                             "Unknown"),
+                               Colors = c(blue, green, yellow, orange, pink, purple, grey, "black"),
+                               Fill = c(blue, green, yellow, orange, pink, purple, grey, "white"))
+@
+
+\subsection{Figure}
+
+<<>>=
+Legend5ABD <- ggplot() +
+  coord_flip() +
+  geom_bar(aes(factor(Functions_Legend$Functions, levels = rev(Functions_Legend$Functions))),
+               color = c("black", grey, purple, pink, orange, yellow, green, blue),
+               fill = rev(Functions_Legend$Fill),
+               y = 1) +
+  scale_x_discrete(position = "top") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 10))
+@
+
+\section{PANEL A: Genome organisation PG2}
+
+\subsection{Import files}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Visualisation/")
+PG2 <- read.csv("NODE_1_length_99055_cov_2706.088424_ALD-318/NODE_1_length_99055_cov_2706.088424_ALD-318_Annotation.csv")
+@
+
+\subsection{Mastertable}
+
+<<>>=
+PG2$Lysogeny <- NULL
+PG2$ProductGenoPlotR[PG2$ProductGenoPlotR == ""] <- "hypothetical protein"
+PG2$Function[PG2$ProductGenoPlotR == "hypothetical protein"] <- "Unknown"
+PG2$Function[PG2$ProductGenoPlotR %in% c("unknown", "Unknown")] <- "No function"
+PG2$Function[PG2$Function == "Other"] <- "Other function"
+PG2$fill <- as.character(mapvalues(PG2$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Fill)))
+PG2$color <- as.character(mapvalues(PG2$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Color)))
+shift <- 24647
+PG2$StartEdit <- ifelse(PG2$Start - shift + 1 > 0, PG2$Start - shift + 1, PG2$Start - shift + 98978)
+PG2$StopEdit <- ifelse(PG2$Stop - shift + 1 > 0, PG2$Stop - shift + 1, PG2$Stop - shift + 98978)
+PG2 <- PG2[order(PG2$StartEdit),]
+PG2$GeneEdit <- paste0(PG2$Genome, "_", 1:nrow(PG2))
+PG2$Gene <- PG2$GeneEdit
+PG2$Start <- PG2$StartEdit
+PG2$Stop <- PG2$StopEdit
+PG2 <- PG2[order(PG2$Start),]
+colnames(PG2) <- c("name", gsub("stop", "end", gsub("function", "group", tolower(colnames(PG2[,-1])))))
+PG2_dna <- list(as.dna_seg(PG2[, c(1,3,4,2,19,20,23,24)]))
+PG2_dna[[1]]$strand <- 1 # start and end positions are already corrected for strand
+PG2_ann <- list(annotation(x1 = (PG2_dna[[1]]$start[!PG2_dna[[1]]$group %in% c("No function", "Unknown")] + PG2_dna[[1]]$end[!PG2_dna[[1]]$group %in% c("No function", "Unknown")])/2,
+                             text = as.character(PG2_dna[[1]]$productgenoplotr[!PG2_dna[[1]]$group %in% c("No function", "Unknown")]),
+                             rot = 45,
+                             col = "black"))
+@
+
+\subsection{Figure}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("Fig5A.pdf", width = 10, height = 2)
+Fig5A <- plot_gene_map(PG2_dna, comparisons = NULL,
+                       annotations = PG2_ann, annotation_height = 5, annotation_cex = 0.4,
+                       dna_seg_label_col = "black", dna_seg_line = "black")
+print(Fig5A)
+dev.off()
+@
+
+\section{PANEL B: Genome organisation PG6}
+
+\subsection{Import files}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Visualisation/")
+PG6 <- read.csv("NODE_6_length_71600_cov_331.455560_TARGET-F6767/NODE_6_length_71600_cov_331.455560_TARGET-F6767_Annotation.csv")
+@
+
+\subsection{Mastertable}
+
+<<>>=
+PG6$Lysogeny <- NULL
+PG6$ProductGenoPlotR[PG6$ProductGenoPlotR == ""] <- "hypothetical protein"
+PG6$Function[PG6$ProductGenoPlotR == "hypothetical protein"] <- "Unknown"
+PG6$Function[PG6$ProductGenoPlotR %in% c("unknown", "Unknown")] <- "No function"
+PG6$Function[PG6$Function == "Other"] <- "Other function"
+PG6$fill <- as.character(mapvalues(PG6$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Fill)))
+PG6$color <- as.character(mapvalues(PG6$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Color)))
+shift <- PG6$Start[PG6$Product == "large terminase"]
+PG6$StartEdit <- ifelse(PG6$Start - shift + 1 > 0, PG6$Start - shift + 1, PG6$Start - shift + 71495)
+PG6$StopEdit <- ifelse(PG6$Stop - shift + 1 > 0, PG6$Stop - shift + 1, PG6$Stop - shift + 71495)
+PG6 <- PG6[order(PG6$StartEdit),]
+PG6$GeneEdit <- paste0(PG6$PG6, "_", 1:nrow(PG6))
+PG6$Gene <- PG6$GeneEdit
+PG6$Start <- PG6$StartEdit
+PG6$Stop <- PG6$StopEdit
+PG6 <- PG6[order(PG6$Start),]
+colnames(PG6) <- c("name", gsub("stop", "end", gsub("function", "group", tolower(colnames(PG6[,-1])))))
+PG6_dna <- list(as.dna_seg(PG6[, c(1,3,4,2,19,20,23,24)]))
+PG6_dna[[1]]$strand <- 1 # start and end positions are already corrected for strand
+PG6_ann <- list(annotation(x1 = (PG6_dna[[1]]$start[!PG6_dna[[1]]$group %in% c("No function", "Unknown")] + PG6_dna[[1]]$end[!PG6_dna[[1]]$group %in% c("No function", "Unknown")])/2,
+                             text = as.character(PG6_dna[[1]]$productgenoplotr[!PG6_dna[[1]]$group %in% c("No function", "Unknown")]),
+                             rot = 45,
+                             col = "black"))
+@
+
+\subsection{Figure}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("Fig5B.pdf", width = 10, height = 2)
+Fig5B <- plot_gene_map(PG6_dna, comparisons = NULL,
+                       annotations = PG6_ann, annotation_height = 5, annotation_cex = 0.4,
+                       dna_seg_label_col = "black", dna_seg_line = "black")
+print(Fig5B)
+dev.off()
+@
+
+\section{PANEL C: Tree PG6}
+
+\subsection{Import files}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Trees/Unknown")
+trimming <- "gappyout"
+Tree <- read.tree(paste0("RAxML_bipartitions.UNKNOWN_61genes_19samples_", trimming))
+Tree <- midpoint(Tree)
+Tree <- ladderize(Tree)
+@
+
+\subsection{Mastertable}
+
+<<>>=
+TreeMetadataSRA <- Overview_samples[Overview_samples$Sample %in% Tree$tip.label, c("Sample", "SRA", "Country", "AgeGroup", "Health")]
+TreeMetadataML <- Metadata[Metadata$Sample %in% Tree$tip.label, c("Sample", "Age")]
+TreeMetadataML$SRA <- NA
+TreeMetadataML$Country <- "Denmark"
+TreeMetadataML$AgeGroup <- ifelse(TreeMetadataML$Age < 10, "Child",
+                                  ifelse(TreeMetadataML$Age < 18, "Teenager",
+                                         ifelse(TreeMetadataML$Age < 65, "Adult", "Elderly")))
+TreeMetadataML$Health <- ifelse(grepl("TARGET-F", TreeMetadataML$Sample), "Obese",
+                                ifelse(grepl("ALD", TreeMetadataML$Sample), "ALD", "Healthy"))
+TreeMetadataML$Age <- NULL
+TreeMetadata <- rbind(TreeMetadataML, TreeMetadataSRA)
+TreeMetadata$Region <- ifelse(grepl("USA", TreeMetadata$Country), "USA",
+                              ifelse(grepl("Canada", TreeMetadata$Country), "Canada", TreeMetadata$Country))
+TreeMetadata$Health <- ifelse(grepl("T1D", TreeMetadata$Health), "T1D", TreeMetadata$Health)
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig5C <- ggtree(Tree) %<+% TreeMetadata +
+  geom_treescale() +
+  geom_tiplab(aes(color = Health), size = 3, hjust = -0.1) +
+  scale_color_manual("Health", values = c(colors7, grey)) +
+  new_scale("color") +
+  geom_nodelab(aes(color = as.numeric(label)), size = 2, hjust = -0.15, show.legend = FALSE) +
+  scale_color_gradientn(colors = c(pink, orange, yellow, green)) +
+  new_scale("color") +
+  geom_tippoint(aes(color = Region, fill = Region, shape = AgeGroup),  size = 2.5) +
+  scale_color_manual("Country", values = c(colors7, grey)) +
+  scale_fill_manual("Country", values = c(colors7, grey), guide = "none") +
+  scale_shape_manual("Age", values = 21:25, limits = c("Infant", "Teenager", "Adult", "Elderly", "Unknown")) +
+  xlim(c(0,0.07)) +
+  theme(legend.position = "bottom",
+        legend.direction = "vertical") +
+  guides(shape = guide_legend(order = 1), color = guide_legend(order = 2), color = guide_legend(order = 3))
+@
+
+\section{PANEL D: Genome organisations PG6 tree}
+
+\subsection{Import files}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Trees/Unknown")
+FullLengths <- c(71644, 72372, 71111, 67914, 69794, 70139, 71383, 71389, 71397, 71480, 71495, 71497, 70600)
+names(FullLengths) <- c("Zhao_Patient3", "Kramna_4857", "Moreno-Gallego_3B", "Maqsood_F04M", "ALD-016", "Moreno-Gallego_18A", "Maqsood_F18M", "Minot2012_Healthy12", "Minot2012_Healthy11", "Moreno-Gallego_12A", "TARGET-F6767", "Hannigan_Carcinoma30", "Moreno-Gallego_10B")
+Files <- list()
+for (file in dir(pattern = "*.genes_information.txt", full.names = FALSE)){
+  sample <- gsub("\\.genes_information\\.txt", "", gsub("NODE_[0-9]*_length_[0-9]*_cov_[0-9]*\\.[0-9]*_", "", file))
+  Files[[sample]] <- read.delim(paste0(sample, "_Annotation.csv"), sep = ',', header = TRUE, stringsAsFactors = FALSE)
+}
+@
+
+\subsection{Masterlist}
+
+<<>>=
+Genome_dna <- list()
+Genome_ann <- list()
+for (file in dir(pattern = "*.genes_information.txt", full.names = FALSE)){
+  sample <- gsub("\\.genes_information\\.txt", "", gsub("NODE_[0-9]*_length_[0-9]*_cov_[0-9]*\\.[0-9]*_", "", file))
+  Files[[sample]]$fill <- as.character(mapvalues(Files[[sample]]$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Fill)))
+  Files[[sample]]$color <- as.character(mapvalues(Files[[sample]]$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Color)))
+  Files[[sample]] <- Files[[sample]][order(Files[[sample]]$Start),]
+  Files[[sample]]$Completeness <- NULL
+  Files[[sample]]$Inference <- NULL
+  Files[[sample]]$Product <- NULL
+  Files[[sample]]$Strand <- 1 # start & end position already corrected
+  colnames(Files[[sample]]) <- c("name", "strand", "start", "end", "product", "group", "fill", "color")
+  Files[[sample]] <- Files[[sample]][,c(1,3,4,2,5,6,7,8)] # move strand
+}
+Files <- Files[c("TARGET-N0555", "ALD-038", "Moreno-Gallego_12A", "Legoff_Patient40",
+                "Maqsood_F18M", "Zhao_Patient3", "Maqsood_F04M", "Moreno-Gallego_3B",
+                "Minot2012_Healthy12", "Hannigan_Carcinoma30", "Minot2012_Healthy11",
+                "Moreno-Gallego_18A", "Kramna_4857", "Hannigan_Carcinoma04",
+                "Moreno-Gallego_10B", "Zuo2017_Patient1", "Shkoporov2018_518",
+                "ALD-016", "TARGET-F6767")] # reorder according to gappyout protein tree
+for (sample in names(Files)){
+  Genome_dna[[sample]] <- dna_seg(Files[[sample]])
+  Genome_dna[[sample]]$product[Genome_dna[[sample]]$group %in% c("No function", "Unknown")] <- NA
+  Genome_ann[[sample]] <- annotation(x1 = (Genome_dna[[sample]]$start[!is.na(Genome_dna[[sample]]$product)] + Genome_dna[[sample]]$end[!is.na(Genome_dna[[sample]]$product)])/2,
+                                          text = as.character(Genome_dna[[sample]]$product[!is.na(Genome_dna[[sample]]$product)]),
+                                          rot = 45)
+}
+@
+
+\subsection{Figure}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("Fig5D.pdf", width = 10, height = 10)
+Fig5D <- plot_gene_map(Genome_dna, comparisons = NULL,
+                       dna_seg_labels = rep("", 19),
+                       annotation_heigth = 0.22,
+                       dna_seg_line = "black")
+print(Fig5D)
+dev.off()
+@
+
+\section{FINAL FIGURE 5}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+Fig5A <- image_ggplot(magick::image_read_pdf("Fig5A.pdf"))
+Fig5B <- image_ggplot(magick::image_read_pdf("Fig5B.pdf"))
+Fig5D <- image_ggplot(magick::image_read_pdf("Fig5D.pdf"))
+Legend5C <- as_ggplot(get_legend(Fig5C))
+pdf("Fig5.pdf", width = 10, height = 12)
+ggdraw() +
+  draw_plot(Fig5A, width = 1, height = 1, x = 0, y = 0.4) +
+  draw_plot(Fig5B, width = 1, height = 1, x = 0, y = 0.24) +
+  draw_plot(Fig5C + theme(legend.position = "none"), width = 0.75, height = 0.45, x = 0, y = 0.2) +
+  draw_plot(Fig5D, width = 0.5, height = 0.5, x = 0.5, y = 0.185) +
+  draw_plot(Legend5C, width = 0.75, height = 0.45, x = -0.05, y = -0.1) +
+  draw_plot(Legend5ABD, width = 0.235, height = 0.18, x = 0.5, y = 0.02) +
+  draw_plot_label(c("A", "B", "C"), x = c(0, 0, 0), y = c(1, 0.84, 0.65))
+dev.off()
+@
+
+\part{TABLES}
+
+\chapter{TABLE 1: Logistic models OG}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+form <- "AbsPres"
+samplesubset <- "Healthy"
+viralsubset <- "Viral"
+level <- "Protein"
+level_cluster <- "OrthologousCluster"
+df <- paste0(viralsubset, level, "_", input, "_", form)
+TopAbsPres <- get(df)[grepl("Cluster", get(df)[,level_cluster]),c(level_cluster, colnames(get(df))[colnames(get(df)) %in% SampleSubset[[samplesubset]]])]
+TopAbsPres <- TopAbsPres[rowSums(TopAbsPres[,-1] != 0) > 10,]
+colnames <- TopAbsPres$OrthologousCluster
+TopAbsPres <- as.data.frame(t(TopAbsPres[,-1]))
+colnames(TopAbsPres) <- colnames
+TopAbsPres$Sample <- rownames(TopAbsPres)
+rownames(TopAbsPres) <- NULL
+TopAbsPres <- merge(TopAbsPres, Metadata[,c("Sample", "Group", "Age")], by = "Sample", all.x = TRUE)
+Top <- as.data.frame(colnames(TopAbsPres[,-c(1, ncol(TopAbsPres)-1, ncol(TopAbsPres))]))
+colnames(Top) <- level_cluster
+Top$Prevalence <- colSums(TopAbsPres[,-c(1, ncol(TopAbsPres)-1, ncol(TopAbsPres))])
+for (protein in Top[[level_cluster]]){
+  lm <- glm(TopAbsPres[[protein]] ~ TopAbsPres$Age, family = binomial(link = "logit"))
+  lm_sum <- summary(lm)
+  lm_coef <- lm_sum$coefficients
+  Top$Coefficient[Top$OrthologousCluster == protein] <- lm_coef[2,1]
+  Top$Coefficient_error[Top$OrthologousCluster == protein] <- lm_coef[2,2]
+  Top$Coefficient_pvalue[Top$OrthologousCluster == protein] <- lm_coef[2,4]
+  Top$Intercept[Top$OrthologousCluster == protein] <- lm_coef[1,1]
+  Top$Intercept_error[Top$OrthologousCluster == protein] <- lm_coef[1,2]
+  Top$Intercept_pvalue[Top$OrthologousCluster == protein] <- lm_coef[1,4]
+  ## mc madden pseudo R2
+  null_model <- glm(TopAbsPres[[protein]] ~ 1, family = binomial(link = "logit"))
+  Top$PseudoR2[Top$OrthologousCluster == protein] <- 1 - logLik(lm)/logLik(null_model)
+  chi <- prop.test(c(sum(TopAbsPres[TopAbsPres$Group == "TARGET-N", protein]), sum(TopAbsPres[TopAbsPres$Group == "GALA-HP", protein])),
+          c(nrow(TopAbsPres[TopAbsPres$Group == "TARGET-N",]), nrow(TopAbsPres[TopAbsPres$Group == "GALA-HP",])), correct = TRUE)
+  Top$Chi.p[Top$OrthologousCluster == protein] <- chi$p.value
+  Top$PrevalenceMinors[Top$OrthologousCluster == protein] <- sum(TopAbsPres[TopAbsPres$Group == "TARGET-N", protein])
+  Top$PrevalenceAdults[Top$OrthologousCluster == protein] <- sum(TopAbsPres[TopAbsPres$Group == "GALA-HP", protein])
+}
+@
+
+\subsection{Table}
+
+<<>>=
+Table1 <- Top[Top$Chi.p < 0.05/nrow(Top),]
+for (cluster in Table1$OrthologousCluster){
+  Table1$Size[Table1$OrthologousCluster == cluster] <- nrow(ViralGenes[ViralGenes$OrthologousCluster == cluster,])
+  Table1$Annotation[Table1$OrthologousCluster == cluster] <- paste(as.character(paste0(count(ViralGenes$Product[ViralGenes$OrthologousCluster == cluster])$x,
+                                                                            "(",count(ViralGenes$Product[ViralGenes$OrthologousCluster == cluster])$freq, ")")),
+                                                        collapse = "-")
+
+}
+Table1$Prevalence_perc <- paste0(round(Table1$Prevalence/91*100, 1), "%")
+Table1$PrevalenceMinors_perc <- paste0(round(Table1$PrevalenceMinors/46*100, 1), "%")
+Table1$PrevalenceAdults_perc <- paste0(round(Table1$PrevalenceAdults/45*100, 1), "%")
+Table1$Prev <- paste0(Table1$Prevalence, " (", Table1$Prevalence_perc, ")")
+Table1$PrevAdults <- paste0(Table1$PrevalenceAdults, " (", Table1$PrevalenceAdults_perc, ")")
+Table1$PrevMinors <- paste0(Table1$PrevalenceMinors, " (", Table1$PrevalenceMinors_perc, ")")
+Table1$Chi.p_corr <- paste0("p = ", round(Table1$Chi.p*nrow(TopAbsPres), 4))
+Table1 <- Table1[order(Table1$Prevalence, decreasing = TRUE),]
+Table1 <- Table1[,c("OrthologousCluster", "Size", "Annotation",
+                  "Prev", "PrevMinors", "PrevAdults", "Chi.p_corr")]
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+write.csv(Table1, "Table1.csv", row.names = FALSE)
+@
+
+\subsection{Figure}
+
+<<>>=
+Fig3F <- ggplot(OGLogAbsPres, aes(Age, AbsPres, color = Protein)) +
+  stat_smooth(method = "glm", se = FALSE, method.args = list(family = binomial(link = "logit"))) +
+  scale_color_manual(values = c(viridis(6, begin = 0.2, end = 1), plasma(5, begin = 0.9, end = 0.2)),
+                     breaks = AgeProtein$Protein,
+                     labels = paste0(AgeProtein$Protein, " (", AgeProtein$Annotation, ")")) +
+  scale_x_continuous("Age") +
+  scale_y_continuous("Probability of presence", limits = c(0,1), expand = c(0,0)) +
+  theme_plot() +
+  guides(color = guide_legend(ncol = 1)) +
+  theme(legend.position = "right",
+        legend.title = element_blank())
+@
+
+\part{SUPPLEMENTARY FIGURES}
+
+\chapter{SUPPLEMENTARY FIGURE 1: DEVoC CheckV}
+
+\subsection{Mastertable}
+
+<<>>=
+SummaryQuality <- as.data.frame(count(Annotation$Quality[Annotation$Final_Classification == "Prokaryotic viruses" |
+                                                           Annotation$Final_Classification == "Eukaryotic viruses"]))
+colnames(SummaryQuality) <- c("Quality", "Cluster")
+SummaryQuality$Quality <- as.character(SummaryQuality$Quality)
+SummaryQuality$Cluster_perc <- round(SummaryQuality$Cluster/sum(SummaryQuality$Cluster)*100, digits = 2)
+for (quality in SummaryQuality$Quality){
+  SummaryQuality$ViralAbundance[SummaryQuality$Quality == quality] <- sum(rowSums(ViralAbundance[ViralAbundance$Cluster %in% Annotation$Cluster[Annotation$Quality == quality],-1]))
+}
+SummaryQuality$ViralAbundance_perc <- round(SummaryQuality$ViralAbundance/sum(SummaryQuality$ViralAbundance)*100, digits = 2)
+SummaryQuality$Quality <- factor(SummaryQuality$Quality, levels = c("Complete", "High-quality", "Medium-quality", "Low-quality", "Not-determined"))
+@
+
+\subsection{Figure}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+Pie <- ggplot() +
+  coord_polar("y", start = 0, direction = -1) +
+  scale_fill_manual("Quality", values = c(green, yellow, orange, pink, grey),
+                    breaks = c("Complete", "High-quality", "Medium-quality", "Low-quality", "Not-determined"),
+                    labels = c("Complete (100%)", "High-quality (90 - < 100%)", "Medium-quality (50 - 90%)", "Low-quality (< 50%)", "Not-determined")) +
+  guides(fill = guide_legend(ncol = 1)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 10),
+                     labels = c(0, seq(90, 10, by = -10))) +
+  theme_plot() +
+  theme(axis.title = element_blank(),
+        axis.text.y = element_blank(),
+        axis.line = element_blank(),
+        legend.key.size = unit(20, "pt"),
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0),
+        panel.grid.major.y = element_line(colour = "grey", size = 0.5),
+        panel.grid.major.x = element_blank())
+SupplFig1A <- Pie + geom_bar(aes("", SummaryQuality$Cluster_perc, fill = SummaryQuality$Quality),
+           stat = "identity") +
+  ggtitle("Genome level")
+SupplFig1B <- Pie + geom_bar(aes("", SummaryQuality$ViralAbundance_perc, fill = SummaryQuality$Quality),
+           stat = "identity") +
+  ggtitle("Read level")
+LegendSuppl1AB <- as_ggplot(get_legend(SuppFig1A))
+SupplFig1 <- ggdraw() +
+  draw_plot(SupplFig1A + theme(legend.position = "none"), width = 0.4, x = -0.02, y = 0.01) +
+  draw_plot(SupplFig1B + theme(legend.position = "none"), width = 0.4, x = 0.32, y = 0.01) +
+  draw_plot(LegendSuppl1AB, width = 0.1, x = 0.79, y = 0) +
+  draw_plot_label(c("A", "B"), x = c(0, 0.34), y = c(1, 1))
+pdf("SupplFig1.pdf", width = 7, height = 3)
+print(SupplFig1)
+dev.off()
+@
+
+\chapter{SUPPLEMENTARY FIGURE 2: DEVoC vConTACT2}
+
+\subsection{Mastertable}
+
+<<>>=
+SummaryvConTACT <- as.data.frame(count(Annotation$vConTACT_Classification[Annotation$Final_Classification == "Prokaryotic viruses"]))
+colnames(SummaryvConTACT) <- c("vConTACT", "Cluster")
+SummaryvConTACT$vConTACT <- as.character(SummaryvConTACT$vConTACT)
+SummaryvConTACT$Cluster_perc <- round(SummaryvConTACT$Cluster/sum(SummaryvConTACT$Cluster)*100, digits = 2)
+for (vcontact in SummaryvConTACT$vConTACT){
+  SummaryvConTACT$ViralAbundance[SummaryvConTACT$vConTACT == vcontact] <- sum(rowSums(ViralAbundance[ViralAbundance$Cluster %in% Annotation$Cluster[Annotation$vConTACT_Classification == vcontact],-1]))
+}
+SummaryvConTACT$ViralAbundance_perc <- round(SummaryvConTACT$ViralAbundance/sum(SummaryvConTACT$ViralAbundance)*100, digits = 2)
+SummaryvConTACT$vConTACT <- factor(SummaryvConTACT$vConTACT, levels = c("Clustered", "Overlap", "Clustered/Singleton", "Outlier", "Singleton"))
+@
+
+\subsection{Figure}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+Pie <- ggplot() +
+  coord_polar("y", start = 0, direction = -1) +
+  scale_fill_manual("vConTACT2 classification", values = c(green, yellow, orange, pink, grey)) +
+  guides(fill = guide_legend(ncol = 1)) +
+  scale_y_continuous(breaks = seq(0, 90, by = 10),
+                     labels = c(0, seq(90, 10, by = -10))) +
+  theme_plot() +
+  theme(axis.title = element_blank(),
+        axis.text.y = element_blank(),
+        axis.line = element_blank(),
+        legend.key.size = unit(20, "pt"),
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0),
+        panel.grid.major.y = element_line(colour = "grey", size = 0.5),
+        panel.grid.major.x = element_blank())
+SupplFig2A <- Pie + geom_bar(aes("", SummaryvConTACT$Cluster_perc, fill = SummaryvConTACT$vConTACT),
+         stat = "identity") +
+  ggtitle("Genome level")
+SupplFig2B <- Pie + geom_bar(aes("", SummaryvConTACT$ViralAbundance_perc, fill = SummaryvConTACT$vConTACT),
+         stat = "identity") +
+  ggtitle("Read level")
+LegendSuppl2AB <- as_ggplot(get_legend(SupplFig2A))
+SupplFig2 <- ggdraw() +
+  draw_plot(SupplFig2A + theme(legend.position = "none"), width = 0.4, x = -0.02, y = 0.01) +
+  draw_plot(SupplFig2B + theme(legend.position = "none"), width = 0.4, x = 0.32, y = 0.01) +
+  draw_plot(LegendSuppl2AB, width = 0.1, x = 0.79, y = 0) +
+  draw_plot_label(c("A", "B"), x = c(0, 0.34), y = c(1, 1))
+pdf("SupplFig2.pdf", width = 7, height = 3)
+print(SupplFig2)
+dev.off()
+@
+
+\chapter{SUPPLEMENTARY FIGURE 3: DEVoC Eukaryotic viruses}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "Cluster"
+input_perc <- paste0(input, "_perc")
+viralsubset <- "EukViral"
+level <- "Family"
+final_level <- paste0("Final_", level)
+SummaryEuk <- as.data.frame(count(Annotation[[final_level]][grepl(ViralSubset_grepl[[viralsubset]], Annotation$Final_Classification)]))
+colnames(SummaryEuk) <- c(level, input)
+SummaryEuk[[input_perc]] <- round(SummaryEuk[[input]]/sum(SummaryEuk[[input]])*100, digits = 2)
+SummaryEuk[[level]] <- factor(SummaryEuk[[level]], levels = c("Alphaflexiviridae", "Betaflexiviridae", "Bromoviridae",
+                                                              "Partitiviridae", "Tombusviridae", "Tymoviridae", "Virgaviridae",
+                                                              "Chrysoviridae", "Totiviridae",
+                                                              "Anelloviridae", "Caliciviridae", "Circoviridae", "Genomoviridae",
+                                                              "Parvoviridae", "Picornaviridae", "Smacoviridae",
+                                                              "Picobirnaviridae"))
+@
+
+\subsection{Figure}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("SupplFig3.pdf", width = 7, height = 7)
+SupplFig3plot <- ggplot(SummaryEuk, aes("", get(input_perc), fill = get(level))) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = as.character(get(paste0(viralsubset, "FamiliesColors"))$Colors[get(paste0(viralsubset, "FamiliesColors"))$Family %in% sort(unique(as.character(SummaryEuk$Family)))])) +
+  scale_x_discrete(expand = c(0,0)) +
+  scale_y_continuous("Percentage (%)", breaks = seq(0, 100, by = 10), expand = c(0,0)) +
+  guides(fill = guide_legend(ncol = 1)) +
+  theme_plot() +
+  theme(axis.title.x = element_blank(),
+        legend.title = element_blank(),
+        legend.text = element_text(face = "italic"),
+        legend.key.size = unit(26, "pt"),
+        plot.title = element_text(hjust = 0),
+        plot.subtitle = element_text(hjust = 0),
+        panel.grid.major = element_blank())
+SupplFig3 <- ggdraw() +
+  draw_plot(SupplFig3plot, width = 0.75, height = 1, x = 0, y = 0) +
+  draw_text("Plant-infecting", size = 10, x = 0.87, y = 0.765) +
+  draw_text("Fungi-infecting", size = 10, x = 0.87, y = 0.535) +
+  draw_text("Animal-infecting", size = 10, x = 0.87, y = 0.3) +
+  draw_line(x = c(0.76, 0.78, 0.78, 0.76), y = c(0.59, 0.59, 0.94, 0.94)) +
+  draw_line(x = c(0.76, 0.78, 0.78, 0.76), y = c(0.49, 0.49, 0.58, 0.58)) +
+  draw_line(x = c(0.76, 0.78, 0.78, 0.76), y = c(0.12, 0.12, 0.48, 0.48))
+print(SupplFig3)
+dev.off()
+@
+
+\chapter{SUPPLEMENTARY FIGURE 4: Richness & Prevalence Eukaryotic viruses}
+
+\section{PANEL A: Richness}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+viralsubset <- "EukViral"
+level <- "Species"
+samplesubset <- "Healthy"
+df <- paste0(input, "_A")
+temp <- get(df)[grepl(ViralSubset_grepl[[viralsubset]], get(df)$Classification),
+                  colnames(get(df))[colnames(get(df)) %in% c(SampleSubset[["Healthy"]], level)]]
+temp <- aggregate(temp[,colnames(temp)[colnames(temp) %in% SampleSubset[["Healthy"]]]], by = list(temp[[level]]), FUN = sum)
+colnames(temp) <- c(level, colnames(temp[,-1]))
+temp <- temp[!grepl("Unclassified", temp[[level]]),]
+
+AlphaEuk <- data.frame(Observed = specnumber(t(temp[,-1])))
+@
+
+\subsection{Figure}
+
+<<>>=
+SupplFig4A <- ggplot(AlphaEuk, aes("", Observed)) +
+  geom_boxplot(color = "black", fill = grey, width = 0.5) +
+  scale_x_discrete("") +
+  scale_y_continuous("Observed richness", breaks = seq(0, 10, by = 1), limits = c(0, max(AlphaEuk$Observed) + 0.5), expand = c(0, 0)) +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+@
+
+\section{PANEL B: Prevalence}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+form <- "AbsPres"
+viralsubset <- "EukViral"
+level <- "Species"
+samplesubset <- "Healthy"
+df <- paste0(input, "_", form, "_A")
+Prevalence <- get(df)[grepl(ViralSubset_grepl[[viralsubset]], get(df)$Classification),
+                      c(colnames(get(df))[colnames(get(df)) %in% SampleSubset[[samplesubset]]], AllLevels)]
+Prevalence$Family <- ifelse(grepl("Unclassified", Prevalence$Family), "Unclassified", as.character(Prevalence$Family))
+Prevalence <- aggregate(Prevalence[, colnames(Prevalence)[colnames(Prevalence) %in% SampleSubset[[samplesubset]]]],
+                                              by = list(Prevalence[[level]], Prevalence$Family), FUN = max)
+Prevalence$Prevalence <- rowSums(Prevalence[,3:ncol(Prevalence)])
+Prevalence[,3:(ncol(Prevalence)-1)] <- NULL
+colnames(Prevalence) <- c(level, "Family", "Prevalence")
+# remove stuff that is unclassified: no biological meaning
+Prevalence <- Prevalence[!grepl("Unclassified", Prevalence[[level]]),]
+Prevalence[[level]] <- factor(Prevalence[[level]], levels = Prevalence[order(Prevalence$Prevalence, Prevalence$Family),][[level]])
+Prevalence <- Prevalence[Prevalence$Prevalence > 0,]
+Prevalence$Family <- factor(Prevalence$Family, levels = c("Alphaflexiviridae", "Betaflexiviridae", "Bromoviridae",
+                                                              "Partitiviridae", "Tombusviridae", "Tymoviridae", "Virgaviridae",
+                                                              "Chrysoviridae", "Totiviridae",
+                                                              "Anelloviridae", "Caliciviridae", "Circoviridae", "Genomoviridae",
+                                                              "Parvoviridae", "Picornaviridae", "Smacoviridae",
+                                                              "Picobirnaviridae"))
+@
+
+\subsection{Figure}
+
+<<>>=
+SupplFig4B <- ggplot(Prevalence, aes(reorder(Species, -Prevalence), Prevalence, fill = Family)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_manual(values = as.character(get(paste0(viralsubset, "FamiliesColors"))$Colors[get(paste0(viralsubset, "FamiliesColors"))$Family %in% sort(unique(as.character(Prevalence$Family)))])) +
+  scale_x_discrete(paste0("Species (n = ", format(nrow(Prevalence), big.mark = ","),")")) +
+  scale_y_continuous("Prevalence", breaks = seq(0, 100, by = 5), expand = c(0, 0.01)) +
+  guides(fill = guide_legend(ncol = 1)) +
+  theme_plot() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = c(0.7, 0.7),
+        legend.text = element_text(face = "italic"))
+@
+
+\section{FINAL SUPPLEMENTARY FIGURE 4}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("SupplFig4.pdf", width = 7, height = 7)
+ggdraw() +
+  draw_plot(SupplFig4A, width = 0.25, height = 0.95, x = 0, y = 0) +
+  draw_plot(SupplFig4B, width = 0.75, height = 0.95, x = 0.25, y = 0) +
+  draw_plot_label(c("A", "B"), x = c(0, 0.25), y = c(1,1))
+dev.off()
+@
+
+\chapter{SUPPLEMENTARY FIGURE 5: Observed richness & Shannon diversity PGs}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+samplesubset <- "Healthy"
+viralsubset <- "Phage"
+level <- "Cluster"
+completesubset <- "Half"
+df <- paste0(input, "_A")
+temp <- get(df)[grepl(ViralSubset_grepl[[viralsubset]], get(df)$Classification) &
+                  get(df)$Cluster %in% Annotation$Cluster[grepl(CompleteSubset_grepl[[completesubset]], Annotation$Quality)],
+                  colnames(get(df))[colnames(get(df)) %in% c(SampleSubset[[samplesubset]], level)]]
+colSums(temp[,-1])
+temp <- aggregate(temp[,colnames(temp)[colnames(temp) %in% SampleSubset[[samplesubset]]]], by = list(temp[[level]]), FUN = sum)
+AlphaPG <- data.frame(Sample = colnames(temp[,-1]),
+                     Observed = specnumber(t(temp[,-1])),
+                     Shannon = vegan::diversity(t(temp[,-1]), index = "shannon"))
+AlphaPG <- merge(AlphaPG, Metadata[,c("Sample", "Group")], by.y = "Sample")
+AlphaPG <- melt(AlphaPG, id.vars = c("Sample", "Group"), value.name = "Richness", variable.name = "Type")
+AlphaPG$Group <- ifelse(AlphaPG$Group == "TARGET-N", "Children &\nAdolescents", "Adults")
+AlphaPG$Group <- factor(AlphaPG$Group, levels = c("Children &\nAdolescents", "Adults"))
+@
+
+\section{PANEL A: Observed richness PGs}
+
+\subsection{Figure}
+
+<<>>=
+SupplFig5A <- ggplot(AlphaPG[AlphaPG$Type == "Observed",], aes(Group, Richness)) +
+  geom_boxplot(aes(color = Group, fill = Group), alpha = 0.5) +
+  stat_compare_means(aes(Group, Richness), method = "wilcox.test", label = "p.format", vjust = 3, size = 2.5) +
+  scale_fill_manual(values = c(blue, green), guide = FALSE) +
+  scale_color_manual(values = c(blue, green), guide = FALSE) +
+  scale_y_continuous("PG observed richness", limits = c(0, 95), expand = c(0,0)) +
+  scale_x_discrete("") +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+@
+
+\section{PANEL B: Shannon diversity PGs}
+
+\subsection{Figure}
+
+<<>>=
+SupplFig5B <- ggplot(AlphaPG[AlphaPG$Type == "Shannon",], aes(Group, Richness)) +
+  geom_boxplot(aes(color = Group, fill = Group), alpha = 0.5) +
+  stat_compare_means(aes(Group, Richness), method = "wilcox.test", label = "p.format", vjust = 3, size = 2.5) +
+  scale_fill_manual(values = c(blue, green), guide = FALSE) +
+  scale_color_manual(values = c(blue, green), guide = FALSE) +
+  scale_y_continuous("PG Shannon diversity", limits = c(0, 3.45), expand = c(0,0)) +
+  scale_x_discrete("") +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+@
+
+\section{FINAL SUPPLEMENTARY FIGURE 5}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("SupplFig5.pdf", width = 7, height = 3)
+ggdraw() +
+  draw_plot(SupplFig5A, width = 0.5, height = 0.95, x = 0, y = 0) +
+  draw_plot(SupplFig5B, width = 0.5, height = 0.95, x = 0.5, y = 0) +
+  draw_plot_label(c("A", "B"), x = c(0, 0.5), y = c(1,1))
+dev.off()
+@
+
+\chapter{SUPPLEMENTARY FIGURE 6: Genome organisation age-associated PGs}
+
+\section{PG7}
+
+\subsection{Import files}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Visualisation/")
+PG7 <- read.csv("NODE_2_length_91786_cov_406.797119_GALA-HP-374/NODE_2_length_91786_cov_406.797119_GALA-HP-374_Annotation.csv")
+@
+
+\subsection{Mastertable}
+
+<<>>=
+PG7$Lysogeny <- NULL
+PG7$ProductGenoPlotR[PG7$ProductGenoPlotR == ""] <- "hypothetical protein"
+PG7$Function[PG7$ProductGenoPlotR == "hypothetical protein"] <- "Unknown"
+PG7$Function[PG7$ProductGenoPlotR %in% c("unknown", "Unknown")] <- "No function"
+PG7$Function[PG7$Function == "Other"] <- "Other function"
+PG7$fill <- as.character(mapvalues(PG7$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Fill)))
+PG7$color <- as.character(mapvalues(PG7$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Color)))
+PG7 <- PG7[order(PG7$Start),]
+colnames(PG7) <- c("name", gsub("stop", "end", gsub("function", "group", tolower(colnames(PG7[,-1])))))
+PG7_dna <- list(as.dna_seg(PG7[, c(1,3,4,2,19,20,23,24)]))
+PG7_dna[[1]]$strand <- 1 # start and end positions are already corrected for strand
+PG7_ann <- list(annotation(x1 = (PG7_dna[[1]]$start[!PG7_dna[[1]]$group %in% c("No function", "Unknown")] + PG7_dna[[1]]$end[!PG7_dna[[1]]$group %in% c("No function", "Unknown")])/2,
+                             text = as.character(PG7_dna[[1]]$productgenoplotr[!PG7_dna[[1]]$group %in% c("No function", "Unknown")]),
+                             rot = 45,
+                             col = "black"))
+@
+
+\subsection{Figure}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("SupplFig6A.pdf", width = 10, height = 2)
+SupplFig6A <- plot_gene_map(PG7_dna, comparisons = NULL,
+                       annotations = PG7_ann, annotation_height = 5, annotation_cex = 0.4,
+                       dna_seg_label_col = "black", dna_seg_line = "black")
+print(SupplFig6A)
+dev.off()
+@
+
+\section{PG8}
+
+\subsection{Import files}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Visualisation/")
+PG8 <- read.csv("NODE_2_length_89392_cov_73.120249_TARGET-N2139/NODE_2_length_89392_cov_73.120249_TARGET-N2139_Annotation.csv")
+@
+
+\subsection{Mastertable}
+
+<<>>=
+PG8$Lysogeny <- NULL
+PG8$ProductGenoPlotR[PG8$ProductGenoPlotR == ""] <- "hypothetical protein"
+PG8$Function[PG8$ProductGenoPlotR == "hypothetical protein"] <- "Unknown"
+PG8$Function[PG8$ProductGenoPlotR %in% c("unknown", "Unknown")] <- "No function"
+PG8$Function[PG8$Function == "Other"] <- "Other function"
+PG8$fill <- as.character(mapvalues(PG8$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Fill)))
+PG8$color <- as.character(mapvalues(PG8$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Color)))
+PG8 <- PG8[order(PG8$Start),]
+colnames(PG8) <- c("name", gsub("stop", "end", gsub("function", "group", tolower(colnames(PG8[,-1])))))
+PG8_dna <- list(as.dna_seg(PG8[, c(1,3,4,2,19,20,23,24)]))
+PG8_dna[[1]]$strand <- 1 # start and end positions are already corrected for strand
+PG8_ann <- list(annotation(x1 = (PG8_dna[[1]]$start[!PG8_dna[[1]]$group %in% c("No function", "Unknown")] + PG8_dna[[1]]$end[!PG8_dna[[1]]$group %in% c("No function", "Unknown")])/2,
+                             text = as.character(PG8_dna[[1]]$productgenoplotr[!PG8_dna[[1]]$group %in% c("No function", "Unknown")]),
+                             rot = 45,
+                             col = "black"))
+@
+
+\subsection{Figure}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("SupplFig6B.pdf", width = 10, height = 2)
+SupplFig6B <- plot_gene_map(PG8_dna, comparisons = NULL,
+                       annotations = PG8_ann, annotation_height = 5, annotation_cex = 0.4,
+                       dna_seg_label_col = "black", dna_seg_line = "black")
+print(SupplFig6B)
+dev.off()
+@
+
+\section{PG22}
+
+\subsection{Import files}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Catalogue/Visualisation/")
+PG22 <- read.csv("NODE_52_length_18752_cov_86.860027_GALA-HP-233/NODE_52_length_18752_cov_86.860027_GALA-HP-233_Annotation.csv")
+@
+
+\subsection{Mastertable}
+
+<<>>=
+PG22$Lysogeny <- NULL
+PG22$ProductGenoPlotR[PG22$ProductGenoPlotR == ""] <- "hypothetical protein"
+PG22$Function[PG22$ProductGenoPlotR == "hypothetical protein"] <- "Unknown"
+PG22$Function[PG22$ProductGenoPlotR %in% c("unknown", "Unknown")] <- "No function"
+PG22$Function[PG22$Function == "Other"] <- "Other function"
+PG22$fill <- as.character(mapvalues(PG22$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Fill)))
+PG22$color <- as.character(mapvalues(PG22$Function, from = Functions_Legend$Functions, to = as.character(Functions_Legend$Color)))
+PG22 <- PG22[order(PG22$Start),]
+colnames(PG22) <- c("name", gsub("stop", "end", gsub("function", "group", tolower(colnames(PG22[,-1])))))
+PG22_dna <- list(as.dna_seg(PG22[, c(1,3,4,2,19,20,23,24)]))
+PG22_dna[[1]]$strand <- 1 # start and end positions are already corrected for strand
+PG22_ann <- list(annotation(x1 = (PG22_dna[[1]]$start[!PG22_dna[[1]]$group %in% c("No function", "Unknown")] + PG22_dna[[1]]$end[!PG22_dna[[1]]$group %in% c("No function", "Unknown")])/2,
+                             text = as.character(PG22_dna[[1]]$productgenoplotr[!PG22_dna[[1]]$group %in% c("No function", "Unknown")]),
+                             rot = 45,
+                             col = "black"))
+@
+
+\subsection{Figure}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("SupplFig6C.pdf", width = 6, height = 2)
+SupplFig6C <- plot_gene_map(PG22_dna, comparisons = NULL,
+                       annotations = PG22_ann, annotation_height = 5, annotation_cex = 0.4,
+                       dna_seg_label_col = "black", dna_seg_line = "black")
+print(SupplFig6C)
+dev.off()
+@
+
+\section{FINAL SUPPLEMENTARY FIGURE 6}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("SupplFig6.pdf", width = 10, height = 10)
+SupplFig6A <- image_ggplot(magick::image_read_pdf("SupplFig6A.pdf"))
+SupplFig6B <- image_ggplot(magick::image_read_pdf("SupplFig6B.pdf"))
+SupplFig6C <- image_ggplot(magick::image_read_pdf("SupplFig6C.pdf"))
+ggdraw() +
+  draw_plot(SupplFig6A, width = 1, height = 1, x = 0, y = 0.33) +
+  draw_plot(SupplFig6B, width = 1, height = 1, x = 0, y = 0) +
+  draw_plot(SupplFig6C, width = 0.6, height = 0.6, x = 0, y = -0.11) +
+  draw_plot(Legend5ABD, width = 0.25, height = 0.3, x = 0.7, y = 0.05) +
+  draw_plot_label(c("A", "B", "C"), x = c(0, 0, 0), y = c(1, 0.67, 0.33))
+dev.off()
+@
+
+\chapter{SUPPLEMENTARY FIGURE 7: Relative abundance TPGs}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+form <- "PhageRel"
+samplesubset <- "Healthy"
+viralsubset <- "Phage"
+level <- "Cluster"
+completesubset <- "Half"
+df <- paste0(input, "_", form)
+Lysogeny <- get(df)[get(df)$Cluster %in% Annotation$Cluster[grepl(CompleteSubset_grepl[[completesubset]], Annotation$Quality)]
+                    ,c(level, colnames(get(df))[colnames(get(df)) %in% SampleSubset[[samplesubset]]])]
+Lysogeny <- Lysogeny[rowSums(Lysogeny[,-1] != 0) > 0,]
+Lysogeny[,-1] <- sweep(Lysogeny[,-1], 2, colSums(Lysogeny[,-1]), "/")
+Lysogeny$Lysogeny <- ifelse(Lysogeny$Cluster %in% LysogenicPhages, "Temperate", "No lysogenic genes detected")
+Lysogeny <- aggregate(Lysogeny[,-c(1, ncol(Lysogeny))], by = list(Lysogeny$Lysogeny), FUN = sum)
+Lysogeny <- as.data.frame(t(Lysogeny[,-1]))
+colnames(Lysogeny) <- c("No lysogenic genes detected", "Temperate")
+Lysogeny$Sample <- rownames(Lysogeny)
+rownames(Lysogeny) <- NULL
+Lysogeny <- merge(Lysogeny, Metadata[, c("Sample", "Group")], by = "Sample")
+Lysogeny$Group <- ifelse(Lysogeny$Group == "TARGET-N", "Children &\nAdolescents", "Adults")
+Lysogeny$Group <- factor(Lysogeny$Group, levels = c("Children &\nAdolescents", "Adults"))
+@
+
+\subsection{Figure}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("SupplFig7.pdf", width = 3.5, height = 3)
+SupplFig7 <- ggplot(Lysogeny, aes(Group, Temperate)) +
+  geom_boxplot(aes(color = Group, fill = Group), alpha = 0.5) +
+  stat_compare_means(aes(Group, Temperate), method = "wilcox.test", label = "p.format", vjust = 3, size = 2.5) +
+  scale_fill_manual(values = c(blue, green), guide = FALSE) +
+  scale_color_manual(values = c(blue, green), guide = FALSE) +
+  scale_y_continuous("Temperate PG relative abundance", limits = c(0,1), expand = c(0,0)) +
+  scale_x_discrete("") +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+print(SupplFig7)
+dev.off()
+@
+
+\subsection{Stats}
+
+<<>>=
+summary(Lysogeny$Temperate)
+@
+
+
+\chapter{SUPPLEMENTARY FIGURE 8: Observed richness OGs}
+
+\subsection{Mastertable}
+
+<<>>=
+input <- "ViralAbundance"
+form <- "AbsPres"
+samplesubset <- "Healthy"
+viralsubset <- "Viral"
+level <- "Protein"
+level_cluster <- "OrthologousCluster"
+df <- paste0(viralsubset, level, "_", input, "_", form)
+temp <- get(df)[,c(level_cluster, colnames(get(df))[colnames(get(df)) %in% SampleSubset[[samplesubset]]])]
+RichnessOG <- as.data.frame(colnames(temp[,-1]))
+colnames(RichnessOG) <- "Sample"
+RichnessOG$Richness <- colSums(temp[,-1])
+RichnessOG <- merge(RichnessOG, Metadata[, c("Sample", "Group")], by = "Sample", all.x = TRUE)
+RichnessOG$Group <- ifelse(RichnessOG$Group == "TARGET-N", "Children &\nAdolescents", "Adults")
+RichnessOG$Group <- factor(RichnessOG$Group, levels = c("Children &\nAdolescents", "Adults"))
+@
+
+\subsection{Figure}
+
+<<>>=
+setwd("~/OneDrive/Documenten/PhD/Articles/LVE_Catalogue/Catalogue_Figures/")
+pdf("SupplFig8.pdf", width = 3.5, height = 3)
+SupplFig8 <- ggplot(RichnessOG, aes(Group, Richness)) +
+  geom_boxplot(aes(color = Group, fill = Group), alpha = 0.5) +
+  stat_compare_means(aes(Group, Richness), method = "wilcox.test", label = "p.format", vjust = 3, size = 2.5) +
+  scale_fill_manual(values = c(blue, green), guide = FALSE) +
+  scale_color_manual(values = c(blue, green), guide = FALSE) +
+  scale_y_continuous("OG observed richness", limits = c(0, 6700), expand = c(0,0), breaks = seq(0, 6000, by = 1000), labels = scales::comma) +
+  scale_x_discrete("") +
+  theme_plot() +
+  theme(panel.grid.major.x = element_blank())
+print(SupplFig8)
+dev.off()
+@
+
+\part{SUPPLEMENTARY TABLES}
+
+\chapter{SUPPLEMENTARY TABLE 1: SRA studies}
+
+### Excel file
+
+\chapter{SUPPLEMENTARY TABLE 2: Overlap between all viral genome datbases}
+
+<<>>=
+OtherGenomeClusters$Cluster <- paste0("Cluster_", 1:nrow(OtherGenomeClusters))
+PresentInAllClusters <- OtherGenomeClusters$Cluster[OtherGenomeClusters$GVD > 0 &
+                                                      OtherGenomeClusters$HGVGC > 0 &
+                                                      OtherGenomeClusters$RefSeq > 0 &
+                                                      OtherGenomeClusters$IMGVR > 0]
+PresentInAll <- OtherGenomeClusters_Members[OtherGenomeClusters_Members$Cluster %in% PresentInAllClusters,]
+PresentInAll$ClusterRepresentative <- PresentInAll$Member1
+PresentInAll <- melt(PresentInAll, id.vars = c("Cluster", "ClusterRepresentative"), value.name = "Member")
+PresentInAll$variable <- NULL
+PresentInAll <- PresentInAll[PresentInAll$Member != "",]
+colnames(PresentInAll) <- c("ClusterNr", "ClusterRepresentative", "Cluster")
+PresentInAll <- merge(PresentInAll, Annotation[,c("Cluster", "Length", "Circularity", "Quality", "Completeness",
+                                                             "Final_Family", "Final_Genus", "Final_Species")],
+                      by = "Cluster", all.x = TRUE)
+write.csv(PresentInAll, "SupplTable2.csv", row.names = FALSE)
+## info of non catalogue sequences retrieve manually from ncbi/imgvr
+@
+
+\chapter{SUPPLEMENTARY TABLE 3: Top 39 most prevalent PGs}
+
+<<>>=
+input <- "ViralAbundance"
+samplesubset <- "Healthy"
+form <- "AbsPres"
+df <- paste0(input, "_", form, "_A")
+temp <- get(df)[grepl(ViralSubset_grepl[["Phage"]], get(df)$Classification) &
+                              get(df)$Cluster %in% HalfViruses,
+                                         c("Cluster", colnames(get(df))[colnames(get(df)) %in% SampleSubset[[samplesubset]]])]
+temp <- temp[rowSums(temp[,-1] != 0) > 10,]
+colnames <- temp$Cluster
+temp <- as.data.frame(t(temp[,-1]))
+colnames(temp) <- colnames
+temp$Sample <- rownames(temp)
+rownames(temp) <- NULL
+temp <- merge(temp, Metadata[,c("Sample", "Group", "Age")], by = "Sample", all.x = TRUE)
+temp$Group <- factor(temp$Group)
+Top <- as.data.frame(colnames(temp[,-c(1, ncol(temp)-1, ncol(temp))]))
+colnames(Top) <- "Cluster"
+Top$Prevalence <- colSums(temp[,-c(1, ncol(temp)-1, ncol(temp))])
+for (genome in Top$Cluster){
+  chi <- prop.test(c(sum(temp[temp$Group == "TARGET-N", genome]), sum(temp[temp$Group == "GALA-HP", genome])),
+          c(nrow(temp[temp$Group == "TARGET-N",]), nrow(temp[temp$Group == "GALA-HP",])), correct = TRUE)
+  Top$Chi.p[Top$Cluster == genome] <- chi$p.value
+  Top$PrevalenceMinors[Top$Cluster == genome] <- sum(temp[temp$Group == "TARGET-N", genome])
+  Top$PrevalenceAdults[Top$Cluster == genome] <- sum(temp[temp$Group == "GALA-HP", genome])
+}
+
+Top <- merge(Top, Annotation[, c("Cluster", "Length", "Quality", "Completeness", "Final_Genus")], all.x = TRUE)
+Top <- merge(Top, Host[, c("Cluster", "Species_LCA")], all.x = TRUE)
+Top <- Top[order(Top$Prevalence, decreasing = TRUE),]
+Top$Genome <- paste0("PG", 1:39)
+Top$Length <- paste0(round(Top$Length/1000, 1), " kb")
+Top$Completeness <- paste0(ifelse(Top$Quality == "Complete", "100.0", as.character(Top$Completeness)), "%")
+Top$Final_Genus <- ifelse(Top$Final_Genus == "Unclassified Prokaryotic viruses", "Unclassified", as.character(Top$Final_Genus))
+Top$Species_LCA <- ifelse(is.na(Top$Species_LCA) | Top$Species_LCA == "Unclassified Bacteria", "Unclassified", Top$Species_LCA)
+Top$PrevalenceMinors_perc <- paste0(round(Top$PrevalenceMinors/46*100, 1), "%")
+Top$PrevalenceAdults_perc <- paste0(round(Top$PrevalenceAdults/45*100, 1), "%")
+Top$Prevalence_perc <- paste0(round(Top$Prevalence/91*100, 1), "%")
+Top$Prev <- paste0(Top$Prevalence, " (", Top$Prevalence_perc, ")")
+Top$PrevAdults <- paste0(Top$PrevalenceAdults, " (", Top$PrevalenceAdults_perc, ")")
+Top$PrevMinors <- paste0(Top$PrevalenceMinors, " (", Top$PrevalenceMinors_perc, ")")
+Top$Chi.p_corr <- Top$Chi.p*nrow(Top)
+Top$Chi.p_corr <- ifelse(Top$Chi.p_corr < 0.05, paste0("p = ", round(Top$Chi.p_corr, 4)), "ns")
+Top_Final <- Top[,c("Genome", "Length", "Completeness", "Final_Genus", "Species_LCA",
+                  "Prev", "PrevMinors", "PrevAdults", "Chi.p_corr")]
+write.csv(Top_Final, "SupplTable3.csv", row.names = FALSE)
+Top39 <- Top$Cluster
+names(Top39) <- Top$Genome
+@
+
+\end{document}
